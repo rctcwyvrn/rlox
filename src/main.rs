@@ -34,8 +34,8 @@ fn main() {
 
     let test_bin_op = Instr {
         //op_code: OpCode::OpMultiply,
-        op_code: OpCode::OpDivide,
-        //op_code: OpCode::OpSubtract,
+        //op_code: OpCode::OpDivide,
+        op_code: OpCode::OpSubtract,
         //op_code: OpCode::OpAdd,
         line_num: 12
     };
@@ -51,5 +51,5 @@ fn main() {
     let vm = VM::init_vm(ExecutionMode::Trace);
     //let vm = VM::init_vm(test_chunk, ExecutionMode::Default);
 
-    vm.run(test_chunk);
+    vm.run(&test_chunk);
 }

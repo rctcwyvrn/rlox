@@ -28,14 +28,14 @@ impl VM {
         self.stack.pop().unwrap() // add runtime failure handling in here later
     }
 
-    pub fn run(mut self, chunk:Chunk) -> InterpretResult {
+    pub fn run(mut self, chunk: &Chunk) -> InterpretResult {
         // throw this bad boi in here
         #[macro_export]
         macro_rules! op_binary {
             ($oper:tt) => {
-                if let Value::Double(x) = self.pop() {
-                    if let Value::Double(y) = self.pop() {
-                        self.stack.push(Value::Double(x $oper y))
+                if let Value::Double(b) = self.pop() {
+                    if let Value::Double(a) = self.pop() {
+                        self.stack.push(Value::Double(a $oper b))
                     }
                 }
             }

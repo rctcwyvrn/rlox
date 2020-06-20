@@ -2,6 +2,7 @@ use crate::chunk::{Chunk, OpCode};
 use crate::debug::*;
 use crate::value::Value;
 
+#[derive(Debug)]
 pub enum InterpretResult {
     InterpretOK,
     InterpretCompileError,

@@ -2,54 +2,70 @@ mod chunk;
 mod debug;
 mod value;
 mod vm;
+mod compiler;
+mod scanner;
 
-use crate::chunk::{Instr, OpCode, Chunk};
-use crate::debug::disassemble_chunk;
-use crate::value::Value;
-use crate::vm::{VM, ExecutionMode};
+use crate::vm::{VM, ExecutionMode, InterpretResult};
+use crate::chunk::{Chunk};
+use crate::compiler::compile;
+
+use std::env;
+use std::io;
+use std::fs::File;
+use std::io::prelude::*;
+use std::path::Path;
 
 fn main() {
-    let mut test_chunk = Chunk::init_chunk();
-    let test_return = Instr {
-        op_code: OpCode::OpReturn,
-        line_num: 12
+    let args: Vec<String> = env::args().collect();
+
+    if args.len() == 1 {
+        repl();
+    } else if args.len() == 2 {
+        let result = run_file(args.get(1).unwrap());
+        println!("> {:?}",result);
+    } else {
+        println!("Usage: rlox [path]");
+    }
+}
+
+fn repl() {
+    let mut input = String::new();
+    loop {
+        match io::stdin().read_line(&mut input) {
+            Ok(_) => {
+                interpret(&input);
+            }
+            Err(error) => println!("Failed to get stdin: {}", error)
+        }
+        input.clear();
+    }
+}
+
+fn run_file(filename: &String) -> InterpretResult{
+    let path = Path::new(&filename);
+    let path_display = path.display();
+
+    let mut file = match File::open(&path) {
+        Ok(file) => file,
+        Err(why) => panic!("Failed to open {}: {}", path_display, why),
     };
 
-    let index = test_chunk.add_constant(Value::Double(5.0));
-    let test_constant_1 = Instr {
-        op_code: OpCode::OpConstant(index),
-        line_num: 12
+    let mut s = String::new();
+    match file.read_to_string(&mut s) {
+        Ok(_) => return interpret(&s),
+        Err(why) => panic!("Failed to read {}: {}", path_display, why),
     };
+}
 
-    let index = test_chunk.add_constant(Value::Double(20.0));
-    let test_constant_2 = Instr {
-        op_code: OpCode::OpConstant(index),
-        line_num: 12
-    };
-
-    let test_negate = Instr {
-        op_code: OpCode::OpNegate,
-        line_num: 12
-    };
-
-    let test_bin_op = Instr {
-        //op_code: OpCode::OpMultiply,
-        //op_code: OpCode::OpDivide,
-        op_code: OpCode::OpSubtract,
-        //op_code: OpCode::OpAdd,
-        line_num: 12
-    };
-
-    test_chunk.write_instruction(test_constant_1);
-    test_chunk.write_instruction(test_constant_2);
-    test_chunk.write_instruction(test_negate);
-    test_chunk.write_instruction(test_bin_op);
-    test_chunk.write_instruction(test_return);
-
-    disassemble_chunk(&test_chunk, "test program");
-
+fn interpret(source: &String) -> InterpretResult {
     let vm = VM::init_vm(ExecutionMode::Trace);
     //let vm = VM::init_vm(test_chunk, ExecutionMode::Default);
 
-    vm.run(&test_chunk);
+    let mut chunk = Chunk::init_chunk();
+    let result = compile(source, &mut chunk);
+    if !result {
+        return InterpretResult::InterpretCompileError;
+    }
+
+    vm.run(&chunk)
 }

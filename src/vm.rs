@@ -58,7 +58,7 @@ impl VM {
 
             match instr.op_code {
                 OpCode::OpReturn => { 
-                    println!("temp return thing: {:?}", self.stack.pop().unwrap());
+                    println!("temp return thing: {:?}", self.pop());
                     return InterpretResult::InterpretOK
                 },
                 OpCode::OpConstant(index) => self.stack.push(chunk.get_constant(index)),

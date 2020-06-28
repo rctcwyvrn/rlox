@@ -1,6 +1,6 @@
-const error_messages: &'static [&'static str] = &["rlox: Invalid character"]; // Error messages will just be constant static strings
+const ERROR_MESSAGES: &'static [&'static str] = &["rlox: Invalid character"]; // Error messages will just be constant static strings
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TokenType {
     TokenLeftParen, TokenRightParen,
     TokenLeftBrace, TokenRightBrace,
@@ -14,22 +14,22 @@ pub enum TokenType {
     TokenTrue, TokenVar, TokenWhile, TokenError, TokenEOF,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Token<'a> {
-    token_type: TokenType,
-    line_num: usize,
-    lexemme: &'a str // String slice of the input file way back in main.rs
+#[derive(Debug)]
+pub struct Token {
+    pub token_type: TokenType,
+    pub line_num: usize,
+    pub lexemme: String // rust gets mad at me if i try to make this a reference to the original String back in main, so we need to copy each lexemme out, which kinda sucks
 }
 
 pub struct Scanner<'a> { // I don't understand lifetimes or what this does, but it makes the compiller happy so that's good enough for now :P
-    code: &'a String, // could probably be a slice
+    code: &'a str,
     cur_line: usize,
     start_pos: usize,
     cur_pos: usize
 }
 
 impl Scanner<'_> {
-    pub fn init_scanner(code: &String) -> Scanner {
+    pub fn init_scanner(code: &str) -> Scanner {
         Scanner {code, cur_line: 0, start_pos: 0, cur_pos: 0}
     }
 
@@ -37,16 +37,25 @@ impl Scanner<'_> {
         Token {
             token_type,
             line_num: self.cur_line,
-            lexemme: &self.code[self.start_pos..self.cur_pos]
+            lexemme: self.code[self.start_pos..self.cur_pos].to_string()
+
         }
+        // Token {
+        //     token_type,
+        //     line_num: self.cur_line,
+        // }
     }
 
     fn error_token(&self, message_index: usize) -> Token {
         Token {
             token_type: TokenType::TokenError,
             line_num: self.cur_line,
-            lexemme: error_messages[message_index]
+            lexemme: ERROR_MESSAGES[message_index].to_string()
         }
+        // Token {
+        //     token_type: TokenType::TokenError,
+        //     line_num: self.cur_line,
+        // }
     }
 
     fn is_at_end(&self) -> bool {
@@ -152,6 +161,9 @@ impl Scanner<'_> {
             b'o' => self.check_for_keyword(1, 1, "r", TokenType::TokenOr),
             b'p' => self.check_for_keyword(1, 4, "rint", TokenType::TokenPrint),
             b'r' => self.check_for_keyword(1, 5, "eturn", TokenType::TokenReturn),
+            b's' => self.check_for_keyword(1, 4, "uper", TokenType::TokenSuper),
+            b'v' => self.check_for_keyword(1, 2, "ar", TokenType::TokenVar),
+            b'w' => self.check_for_keyword(1, 4, "hile", TokenType::TokenWhile),
             b'f' => {
                 if self.cur_pos - self.start_pos > 1 {  // more than 1 char in this maybe keyword
                     match self.code.as_bytes()[self.start_pos + 1] {
@@ -190,9 +202,9 @@ impl Scanner<'_> {
         self.start_pos = self.cur_pos; // reset any seeking we did while we were removing whitespace
 
         if self.is_at_end() {
-            panic!("meow");
-            //return self.create_token(TokenType::TokenEOF)
+            return self.create_token(TokenType::TokenEOF)
         }
+
         let c = self.advance();
 
         if is_digit(c) {

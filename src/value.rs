@@ -1,5 +1,5 @@
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub enum Value {
     Double(f64),
-    Integer(usize),
+    String(String)
 }

@@ -4,6 +4,7 @@ mod value;
 mod vm;
 mod compiler;
 mod scanner;
+mod prec;
 
 use crate::vm::{VM, ExecutionMode, InterpretResult};
 use crate::chunk::{Chunk};
@@ -22,7 +23,7 @@ fn main() {
         repl();
     } else if args.len() == 2 {
         let result = run_file(args.get(1).unwrap());
-        println!("> {:?}",result);
+        println!("> {:?}", result);
     } else {
         println!("Usage: rlox [path]");
     }
@@ -41,7 +42,7 @@ fn repl() {
     }
 }
 
-fn run_file(filename: &String) -> InterpretResult{
+fn run_file(filename: &String) -> InterpretResult {
     let path = Path::new(&filename);
     let path_display = path.display();
 
@@ -58,8 +59,8 @@ fn run_file(filename: &String) -> InterpretResult{
 }
 
 fn interpret(source: &String) -> InterpretResult {
-    let vm = VM::init_vm(ExecutionMode::Trace);
-    //let vm = VM::init_vm(test_chunk, ExecutionMode::Default);
+    //let vm = VM::init_vm(ExecutionMode::Trace);
+    let vm = VM::init_vm(ExecutionMode::Default);
 
     let mut chunk = Chunk::init_chunk();
     let result = compile(source, &mut chunk);

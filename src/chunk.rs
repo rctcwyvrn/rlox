@@ -35,7 +35,7 @@ impl Chunk {
     pub fn get_constant(&self, index: usize) -> Value {
         let val = self.constants.get(index);
         match val {
-            Some(x) => *x,
+            Some(x) => x.clone(),
             None => Value::Double(69.69) // add runtime failure in here later
         }
     }

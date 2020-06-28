@@ -1,6 +1,6 @@
 use crate::value::Value;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum OpCode {
     OpReturn,
     OpNegate,
@@ -9,6 +9,13 @@ pub enum OpCode {
     OpSubtract,
     OpMultiply,
     OpDivide,
+    OpNil,
+    OpTrue,
+    OpFalse,
+    OpNot,
+    OpEqual,
+    OpGreater,
+    OpLess
 }
 
 #[derive(Debug)]

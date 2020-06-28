@@ -1,5 +1,8 @@
 use crate::scanner::TokenType;
 
+// Please forgive me for my sins, do not read this file :c 
+
+
 #[derive(Debug, PartialEq, PartialOrd)]
 pub enum Precedence {
     PrecNone,
@@ -21,6 +24,7 @@ pub enum ParseFn {
     Grouping,
     Number,
     Binary,
+    Literal,
 }
 
 pub struct ParseRule {
@@ -41,8 +45,8 @@ impl ParseRule {
             Precedence::PrecTerm        => Precedence::PrecFactor,
             Precedence::PrecFactor      => Precedence::PrecUnary,
             Precedence::PrecUnary       => Precedence::PrecCall,
-            Precedence::PrecCall        =>  Precedence::PrecPrimary,
-            Precedence::PrecPrimary     =>  Precedence::PrecPrimary,
+            Precedence::PrecCall        => Precedence::PrecPrimary,
+            Precedence::PrecPrimary     => Precedence::PrecPrimary,
         }
     }
 }
@@ -89,6 +93,66 @@ const PARSE_RULE_NUM: ParseRule = ParseRule {
     precedence: Precedence::PrecNone
 };
 
+const PARSE_RULE_TRUE: ParseRule = ParseRule {
+    prefix: ParseFn::Literal,
+    infix: ParseFn::None,
+    precedence: Precedence::PrecNone
+};
+
+const PARSE_RULE_FALSE: ParseRule = ParseRule {
+    prefix: ParseFn::Literal,
+    infix: ParseFn::None,
+    precedence: Precedence::PrecNone
+};
+
+const PARSE_RULE_NIL: ParseRule = ParseRule {
+    prefix: ParseFn::Literal,
+    infix: ParseFn::None,
+    precedence: Precedence::PrecNone
+};
+
+const PARSE_RULE_BANG: ParseRule = ParseRule {
+    prefix: ParseFn::Unary,
+    infix: ParseFn::None,
+    precedence: Precedence::PrecNone
+};
+
+const PARSE_RULE_BE: ParseRule = ParseRule {
+    prefix: ParseFn::None,
+    infix: ParseFn::Binary,
+    precedence: Precedence::PrecEquality
+};
+
+const PARSE_RULE_EE: ParseRule = ParseRule {
+    prefix: ParseFn::None,
+    infix: ParseFn::Binary,
+    precedence: Precedence::PrecEquality
+};
+
+
+const PARSE_RULE_G: ParseRule = ParseRule {
+    prefix: ParseFn::None,
+    infix: ParseFn::Binary,
+    precedence: Precedence::PrecComparison
+};
+
+const PARSE_RULE_GE: ParseRule = ParseRule {
+    prefix: ParseFn::None,
+    infix: ParseFn::Binary,
+    precedence: Precedence::PrecComparison
+};
+const PARSE_RULE_L: ParseRule = ParseRule {
+    prefix: ParseFn::None,
+    infix: ParseFn::Binary,
+    precedence: Precedence::PrecComparison
+};
+const PARSE_RULE_LE: ParseRule = ParseRule {
+    prefix: ParseFn::None,
+    infix: ParseFn::Binary,
+    precedence: Precedence::PrecComparison
+};
+
+
 pub fn get_rule(operator: TokenType) -> ParseRule {
     match operator {
         TokenType::TokenLeftParen   => PARSE_RULE_LP,
@@ -97,6 +161,16 @@ pub fn get_rule(operator: TokenType) -> ParseRule {
         TokenType::TokenSlash       => PARSE_RULE_SLASH,
         TokenType::TokenStar        => PARSE_RULE_STAR,
         TokenType::TokenNumber      => PARSE_RULE_NUM,
+        TokenType::TokenTrue        => PARSE_RULE_TRUE,
+        TokenType::TokenFalse       => PARSE_RULE_FALSE,
+        TokenType::TokenNil         => PARSE_RULE_NIL,
+        TokenType::TokenBang        => PARSE_RULE_BANG,
+        TokenType::TokenBangEqual   => PARSE_RULE_BE,
+        TokenType::TokenEqualEqual  => PARSE_RULE_EE,
+        TokenType::TokenGreater     => PARSE_RULE_G,
+        TokenType::TokenGreaterEqual=> PARSE_RULE_GE,
+        TokenType::TokenLess        => PARSE_RULE_L,
+        TokenType::TokenLessEqual   => PARSE_RULE_LE,
         _                           => PARSE_RULE_NONE
     }
 }

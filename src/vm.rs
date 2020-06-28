@@ -1,4 +1,4 @@
-use crate::chunk::{Chunk, OpCode};
+use crate::chunk::{Chunk, OpCode, Instr};
 use crate::debug::*;
 use crate::value::Value;
 
@@ -15,45 +15,72 @@ pub enum ExecutionMode {
     Trace
 }
 
-pub struct VM {
+pub struct VM<'a> {
     mode: ExecutionMode,
-    stack: Vec<Value>
+    chunk: &'a Chunk,
+    stack: Vec<Value>,
+    ip: usize,
 }
 
-impl VM {
-    pub fn init_vm(mode: ExecutionMode) -> VM {
-        VM { mode, stack: Vec::new() }
+impl VM<'_> {
+    pub fn init_vm(mode: ExecutionMode, chunk: &Chunk) -> VM {
+        VM { mode, chunk, stack: Vec::new(), ip: 0}
+    }
+
+    fn push(&mut self, val: Value) {
+        self.stack.push(val)
     }
 
     fn pop(&mut self) -> Value {
         self.stack.pop().unwrap() // add runtime failure handling in here later
     }
 
-    pub fn run(mut self, chunk: &Chunk) -> InterpretResult {
+    fn peek(&self) -> &Value {
+        self.stack.last().unwrap()
+    }
+
+    fn debug_trace(&self, instr: &Instr) {
+        // DEBUG TRACE EXECUTION
+        println!("---");
+        print!("Next instr: ");
+        disassemble_instruction(instr, self.chunk);
+        println!("Stack: ");
+        for value in &self.stack {
+            println!("[ {:?} ]", value);
+        }
+        println!("---\n");
+    }
+
+    fn runtime_error(&self, msg: &str) {
+        let instr = self.ip - 1;
+        let line = self.chunk.code.get(instr).unwrap().line_num;
+        eprintln!("{}", msg);
+        eprintln!("\t[line {}] in script\n", line);
+    }
+
+    pub fn run(mut self) -> InterpretResult {
         // throw this bad boi in here
-        #[macro_export]
         macro_rules! op_binary {
-            ($oper:tt) => {
-                if let Value::Double(b) = self.pop() {
-                    if let Value::Double(a) = self.pop() {
-                        self.stack.push(Value::Double(a $oper b))
+            ($val_type: path, $oper: tt) => {
+                {
+                    //if let ($val_type(a), $val_type(b)) = (self.pop(), self.pop()) {
+                    if let (Value::Double(a), Value::Double(b)) = (self.pop(), self.pop()) {
+                        self.push($val_type(a $oper b))
+                    } else {
+                        self.runtime_error("Operands must be numbers");
+                        return InterpretResult::InterpretRuntimeError;
                     }
                 }
             }
         }
 
         println!("== Starting execution | Mode: {:?} ==", self.mode);
-        for instr in chunk.code.iter() {
+        while self.ip < self.chunk.code.len() {
+            let instr = self.chunk.code.get(self.ip).unwrap();
+            self.ip = self.ip + 1;
+
             if let ExecutionMode::Trace = self.mode {
-                // DEBUG TRACE EXECUTION
-                println!("---");
-                print!("Next instr: ");
-                disassemble_instruction(&instr, &chunk);
-                println!("Stack: ");
-                for value in &self.stack {
-                    println!("[ {:?} ]", value);
-                }
-                println!("---");
+                self.debug_trace(&instr);
             }
 
             match instr.op_code {
@@ -61,17 +88,64 @@ impl VM {
                     println!("temp return thing: {:?}", self.pop());
                     return InterpretResult::InterpretOK
                 },
-                OpCode::OpConstant(index) => self.stack.push(chunk.get_constant(index)),
-                OpCode::OpNegate => { 
-                    if let Value::Double(x) = self.pop() { self.stack.push(Value::Double(x * -1.0)); }
+
+                OpCode::OpConstant(index) => self.push(self.chunk.get_constant(index)),
+                OpCode::OpTrue          => self.push(Value::Bool(true)),
+                OpCode::OpFalse         => self.push(Value::Bool(false)),
+                OpCode::OpNil           => self.push(Value::Nil),
+                
+                OpCode::OpAdd           => op_binary!(Value::Double, +),
+                OpCode::OpSubtract      => op_binary!(Value::Double,-),
+                OpCode::OpMultiply      => op_binary!(Value::Double,*),
+                OpCode::OpDivide        => op_binary!(Value::Double,/),
+                OpCode::OpGreater       => op_binary!(Value::Bool, >),
+                OpCode::OpLess          => op_binary!(Value::Bool, <),
+                OpCode::OpEqual => {
+                    let t = (self.pop(), self.pop());
+                    self.push(Value::Bool(values_equal(t)));
                 },
-                OpCode::OpAdd => op_binary!(+),
-                OpCode::OpSubtract => op_binary!(-),
-                OpCode::OpMultiply => op_binary!(*),
-                OpCode::OpDivide => op_binary!(/),
+
+                OpCode::OpNot => {
+                    let val = Value::Bool(is_falsey(self.pop()));
+                    self.push(val);
+                },
+                OpCode::OpNegate => {
+                    let value = self.pop().as_num(); 
+                    match value {
+                        Some(x) => self.push(Value::Double(x * -1.0)),
+                        None => {
+                            self.runtime_error("Attempted to negate a non-number value");
+                            return InterpretResult::InterpretRuntimeError;
+                        }
+                    }
+                },
             }
         }
 
         return InterpretResult::InterpretRuntimeError;
     }
+}
+
+fn is_falsey(val: Value) -> bool {
+    match val {
+        Value::Bool(false) => true,
+        Value::Nil => true,
+        _ => false
+    }
+}
+
+fn values_equal(t: (Value, Value)) -> bool {
+    if let (Value::Double(x), Value::Double(y)) = t {
+        return x == y;
+    } 
+
+    if let (Value::Bool(x), Value::Bool(y)) = t {
+        return x == y;
+    }
+
+    if t.0 == Value::Nil {
+        return true;
+    }
+
+    return false;
 }

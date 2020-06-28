@@ -40,11 +40,11 @@ impl<'a> Parser<'a> {
         if self.panic_mode { return } // Ignore other errors while in panic_mode
 
         let token = self.previous();
-        println!("[Line {}] Error", token.line_num);
+        eprintln!("[Line {}] Error", token.line_num);
         match token.token_type {
-            TokenType::TokenEOF => println!(" at end of file"),
+            TokenType::TokenEOF => eprintln!(" at end of file"),
             TokenType::TokenError => (), // nothing
-            _ => print!(" at '{}'", token.lexemme)
+            _ => eprint!(" at '{}'", token.lexemme)
         }
 
         println!(": {}", message);
@@ -58,6 +58,12 @@ impl<'a> Parser<'a> {
             op_code,
             line_num: self.previous().line_num
         })
+    }
+
+    fn emit_instrs(&mut self, op_codes: &[OpCode]) {
+        for oc in op_codes {
+            self.emit_instr(*oc)
+        }
     }
 
     fn emit_constant(&mut self, value: Value) {
@@ -91,7 +97,8 @@ impl<'a> Parser<'a> {
             ParseFn::Binary     => self.binary(),
             ParseFn::Grouping   => self.grouping(),
             ParseFn::Unary      => self.unary(),
-            ParseFn::Number     => self.number()
+            ParseFn::Number     => self.number(),
+            ParseFn::Literal    => self.literal()
         }
     }
 
@@ -104,6 +111,15 @@ impl<'a> Parser<'a> {
         self.emit_constant(Value::Double(value));
     }
 
+    fn literal(&mut self) {
+        match self.previous().token_type {
+            TokenType::TokenFalse => self.emit_instr(OpCode::OpFalse),
+            TokenType::TokenTrue => self.emit_instr(OpCode::OpTrue),
+            TokenType::TokenNil => self.emit_instr(OpCode::OpNil),
+            _ => panic!("Unreachable state reached, attempted to make a literal out of a non-literal type?"),
+        }
+    }
+
     fn grouping(&mut self) {
         self.expression();
         self.consume(TokenType::TokenRightParen, "Expected ')' after expression");
@@ -114,6 +130,7 @@ impl<'a> Parser<'a> {
         self.parse_precedence(Precedence::PrecUnary); // evaluate the expression in the unary
         match operator_type {
             TokenType::TokenMinus => self.emit_instr(OpCode::OpNegate),
+            TokenType::TokenBang => self.emit_instr(OpCode::OpNot),
             _ => () // Error?
         }
     }
@@ -126,10 +143,16 @@ impl<'a> Parser<'a> {
 
         // Stack based vm, so emit the binary instr after
         match operator_type {
-            TokenType::TokenPlus => self.emit_instr(OpCode::OpAdd),
-            TokenType::TokenMinus => self.emit_instr(OpCode::OpSubtract),
-            TokenType::TokenStar => self.emit_instr(OpCode::OpMultiply),
-            TokenType::TokenSlash => self.emit_instr(OpCode::OpDivide),
+            TokenType::TokenPlus        => self.emit_instr(OpCode::OpAdd),
+            TokenType::TokenMinus       => self.emit_instr(OpCode::OpSubtract),
+            TokenType::TokenStar        => self.emit_instr(OpCode::OpMultiply),
+            TokenType::TokenSlash       => self.emit_instr(OpCode::OpDivide),
+            TokenType::TokenBangEqual   => self.emit_instrs(&[OpCode::OpEqual, OpCode::OpNot]),
+            TokenType::TokenEqualEqual  => self.emit_instr(OpCode::OpEqual),
+            TokenType::TokenGreater     => self.emit_instr(OpCode::OpGreater),
+            TokenType::TokenGreaterEqual => self.emit_instrs(&[OpCode::OpLess, OpCode::OpNot]),
+            TokenType::TokenLess        => self.emit_instr(OpCode::OpLess),
+            TokenType::TokenLessEqual   => self.emit_instrs(&[OpCode::OpGreater, OpCode::OpNot]),
             _ => () // error?
         }
     }
@@ -148,6 +171,7 @@ fn init_parser<'a>(code: &'a String, chunk: &'a mut Chunk) -> Parser<'a> {
     }
 }
 
+// looks like the book will have multiple bytecode chunks being produced, so we're gonna have to switch to some vectors eventually
 pub fn compile(code: &String, chunk: &mut Chunk) -> bool{
     let mut parser = init_parser(code, chunk);
     parser.expression();

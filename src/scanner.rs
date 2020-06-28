@@ -30,7 +30,7 @@ pub struct Scanner<'a> { // I don't understand lifetimes or what this does, but 
 
 impl Scanner<'_> {
     pub fn init_scanner(code: &str) -> Scanner {
-        Scanner {code, cur_line: 0, start_pos: 0, cur_pos: 0}
+        Scanner {code, cur_line: 1, start_pos: 0, cur_pos: 0}
     }
 
     fn create_token(&self, token_type: TokenType) -> Token {
@@ -40,10 +40,6 @@ impl Scanner<'_> {
             lexemme: self.code[self.start_pos..self.cur_pos].to_string()
 
         }
-        // Token {
-        //     token_type,
-        //     line_num: self.cur_line,
-        // }
     }
 
     fn error_token(&self, message_index: usize) -> Token {
@@ -52,10 +48,6 @@ impl Scanner<'_> {
             line_num: self.cur_line,
             lexemme: ERROR_MESSAGES[message_index].to_string()
         }
-        // Token {
-        //     token_type: TokenType::TokenError,
-        //     line_num: self.cur_line,
-        // }
     }
 
     fn is_at_end(&self) -> bool {

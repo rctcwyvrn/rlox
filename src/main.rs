@@ -59,14 +59,13 @@ fn run_file(filename: &String) -> InterpretResult {
 }
 
 fn interpret(source: &String) -> InterpretResult {
-    //let vm = VM::init_vm(ExecutionMode::Trace);
-    let vm = VM::init_vm(ExecutionMode::Default);
-
     let mut chunk = Chunk::init_chunk();
     let result = compile(source, &mut chunk);
     if !result {
         return InterpretResult::InterpretCompileError;
     }
 
-    vm.run(&chunk)
+    let vm = VM::init_vm(ExecutionMode::Trace, &chunk);
+    //let vm = VM::init_vm(ExecutionMode::Default, &chunk));
+    vm.run()
 }

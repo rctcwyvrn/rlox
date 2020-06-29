@@ -25,6 +25,7 @@ pub enum ParseFn {
     Number,
     Binary,
     Literal,
+    String,
 }
 
 pub struct ParseRule {
@@ -151,7 +152,11 @@ const PARSE_RULE_LE: ParseRule = ParseRule {
     infix: ParseFn::Binary,
     precedence: Precedence::PrecComparison
 };
-
+const PARSE_RULE_STR: ParseRule = ParseRule {
+    prefix: ParseFn::String,
+    infix: ParseFn::None,
+    precedence: Precedence::PrecNone
+};
 
 pub fn get_rule(operator: TokenType) -> ParseRule {
     match operator {
@@ -171,6 +176,7 @@ pub fn get_rule(operator: TokenType) -> ParseRule {
         TokenType::TokenGreaterEqual=> PARSE_RULE_GE,
         TokenType::TokenLess        => PARSE_RULE_L,
         TokenType::TokenLessEqual   => PARSE_RULE_LE,
+        TokenType::TokenString      => PARSE_RULE_STR,
         _                           => PARSE_RULE_NONE
     }
 }

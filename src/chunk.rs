@@ -43,7 +43,7 @@ impl Chunk {
         let val = self.constants.get(index);
         match val {
             Some(x) => x.clone(),
-            None => Value::Double(69.69) // add runtime failure in here later
+            None => panic!("VM panic: Constant with given index not found") // add runtime failure in here later
         }
     }
 

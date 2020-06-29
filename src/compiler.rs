@@ -98,7 +98,8 @@ impl<'a> Parser<'a> {
             ParseFn::Grouping   => self.grouping(),
             ParseFn::Unary      => self.unary(),
             ParseFn::Number     => self.number(),
-            ParseFn::Literal    => self.literal()
+            ParseFn::Literal    => self.literal(),
+            ParseFn::String     => self.string(),
         }
     }
 
@@ -118,6 +119,11 @@ impl<'a> Parser<'a> {
             TokenType::TokenNil => self.emit_instr(OpCode::OpNil),
             _ => panic!("Unreachable state reached, attempted to make a literal out of a non-literal type?"),
         }
+    }
+
+    fn string(&mut self) {
+        let str_val = self.previous().lexemme.clone();
+        self.emit_constant(Value::LoxString(str_val[1..str_val.len() -1].to_string()));
     }
 
     fn grouping(&mut self) {

@@ -1,6 +1,6 @@
 use crate::chunk::{Chunk, OpCode, Instr};
 use crate::debug::*;
-use crate::value::Value;
+use crate::value::{Value, is_falsey, values_equal};
 
 #[derive(Debug)]
 pub enum InterpretResult {
@@ -94,7 +94,17 @@ impl VM<'_> {
                 OpCode::OpFalse         => self.push(Value::Bool(false)),
                 OpCode::OpNil           => self.push(Value::Nil),
                 
-                OpCode::OpAdd           => op_binary!(Value::Double, +),
+                OpCode::OpAdd           => {
+                    let t = (self.pop(), self.pop());
+                    if let (Value::LoxString(a), Value::LoxString(b)) = t {
+                        self.push(Value::LoxString(format!("{}{}",b,a)))
+                    } else if let (Value::Double(a), Value::Double(b)) = t {
+                        self.push(Value::Double(a + b))
+                    } else {
+                        self.runtime_error("Operands must be numbers");
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+                },
                 OpCode::OpSubtract      => op_binary!(Value::Double,-),
                 OpCode::OpMultiply      => op_binary!(Value::Double,*),
                 OpCode::OpDivide        => op_binary!(Value::Double,/),
@@ -124,28 +134,4 @@ impl VM<'_> {
 
         return InterpretResult::InterpretRuntimeError;
     }
-}
-
-fn is_falsey(val: Value) -> bool {
-    match val {
-        Value::Bool(false) => true,
-        Value::Nil => true,
-        _ => false
-    }
-}
-
-fn values_equal(t: (Value, Value)) -> bool {
-    if let (Value::Double(x), Value::Double(y)) = t {
-        return x == y;
-    } 
-
-    if let (Value::Bool(x), Value::Bool(y)) = t {
-        return x == y;
-    }
-
-    if t.0 == Value::Nil {
-        return true;
-    }
-
-    return false;
 }

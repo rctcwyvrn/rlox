@@ -2,8 +2,9 @@ use crate::scanner::{Scanner, Token, TokenType};
 use crate::chunk::{OpCode, Instr, Chunk};
 use crate::value::Value;
 use crate::prec::{Precedence, ParseFn, get_rule};
+use crate::debug::disassemble_chunk;
 
-struct Parser<'a> {
+pub struct Parser<'a> {
     scanner: Scanner<'a>,
     tokens: Vec<Token>,
     chunk: &'a mut Chunk,
@@ -36,6 +37,19 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn match_cur(&mut self, token_type: TokenType) -> bool {
+        if !self.check(token_type) {
+            return false;
+        } else {
+            self.advance();
+            return true;
+        }
+    }
+
+    fn check(&self, token_type: TokenType) -> bool {
+        self.current().token_type == token_type
+    }
+
     fn error(&mut self, message: &str) {
         if self.panic_mode { return } // Ignore other errors while in panic_mode
 
@@ -51,6 +65,19 @@ impl<'a> Parser<'a> {
 
         self.had_error = true;
         self.panic_mode = true;
+    }
+
+    fn synchronize(&mut self) {
+        self.panic_mode = false;
+
+        while !self.check(TokenType::TokenEOF) {
+            if self.previous().token_type == TokenType::TokenSemicolon { return; }
+            match self.current().token_type {
+                TokenType::TokenClass | TokenType::TokenFun | TokenType::TokenVar | TokenType::TokenFor | TokenType::TokenIf | TokenType::TokenWhile | TokenType::TokenPrint | TokenType::TokenReturn => return,
+                _ => (),
+            }
+            self.advance();
+        }
     }
 
     fn emit_instr(&mut self, op_code: OpCode) {
@@ -101,6 +128,31 @@ impl<'a> Parser<'a> {
             ParseFn::Literal    => self.literal(),
             ParseFn::String     => self.string(),
         }
+    }
+
+    fn declaration(&mut self) {
+        self.statement();
+        if self.panic_mode { self.synchronize(); }
+    }
+
+    fn statement(&mut self) {
+        if self.match_cur(TokenType::TokenPrint) {
+            self.print_statement();
+        } else {
+            self.expression_statement();
+        }
+    }
+
+    fn print_statement(&mut self) {
+        self.expression();
+        self.consume(TokenType::TokenSemicolon, "Expected ';' after value");
+        self.emit_instr(OpCode::OpPrint);
+    }
+
+    fn expression_statement(&mut self) {
+        self.expression();
+        self.consume(TokenType::TokenSemicolon, "Expected ';' after value");
+        self.emit_instr(OpCode::OpPop);
     }
 
     fn expression(&mut self) {
@@ -162,26 +214,27 @@ impl<'a> Parser<'a> {
             _ => () // error?
         }
     }
-}
 
-fn init_parser<'a>(code: &'a String, chunk: &'a mut Chunk) -> Parser<'a> {
-    let mut scanner = Scanner::init_scanner(code);
-    let mut tokens = Vec::new();
-    tokens.push(scanner.scan_token()); // Only load up one value, because we start the parsing with a call to expression() -> parse_precedence() which will call advance()
-    Parser {
-        scanner,
-        tokens,
-        chunk,
-        had_error: false,
-        panic_mode: false,
+    pub fn init_parser(code: &'a String, chunk: &'a mut Chunk) -> Parser<'a> {
+        let mut scanner = Scanner::init_scanner(code);
+        let mut tokens = Vec::new();
+        tokens.push(scanner.scan_token()); // Only load up one value, because we start the parsing with a call to expression() -> parse_precedence() which will call advance()
+        Parser {
+            scanner,
+            tokens,
+            chunk,
+            had_error: false,
+            panic_mode: false,
+        }
     }
-}
 
-// looks like the book will have multiple bytecode chunks being produced, so we're gonna have to switch to some vectors eventually
-pub fn compile(code: &String, chunk: &mut Chunk) -> bool{
-    let mut parser = init_parser(code, chunk);
-    parser.expression();
-    parser.consume(TokenType::TokenEOF, "Expected end of file");
-    parser.end_compilation();
-    return !parser.had_error
+    // looks like the book will have multiple bytecode chunks being produced, so we're gonna have to switch to some vectors eventually
+    pub fn compile(&mut self) -> bool { 
+        while !self.match_cur(TokenType::TokenEOF) {
+            self.declaration();
+        }
+        self.end_compilation();
+        disassemble_chunk(self.chunk, "test");
+        return !self.had_error
+    }
 }

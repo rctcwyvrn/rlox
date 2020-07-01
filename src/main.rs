@@ -8,7 +8,7 @@ mod prec;
 
 use crate::vm::{VM, ExecutionMode, InterpretResult};
 use crate::chunk::{Chunk};
-use crate::compiler::compile;
+use crate::compiler::Parser;
 
 use std::env;
 use std::io;
@@ -60,12 +60,13 @@ fn run_file(filename: &String) -> InterpretResult {
 
 fn interpret(source: &String) -> InterpretResult {
     let mut chunk = Chunk::init_chunk();
-    let result = compile(source, &mut chunk);
+    let mut parser = Parser::init_parser(source, &mut chunk);
+    let result = parser.compile();
     if !result {
         return InterpretResult::InterpretCompileError;
     }
 
     let vm = VM::init_vm(ExecutionMode::Trace, &chunk);
-    //let vm = VM::init_vm(ExecutionMode::Default, &chunk));
+    //let vm = VM::init_vm(ExecutionMode::Default, &chunk);
     vm.run()
 }

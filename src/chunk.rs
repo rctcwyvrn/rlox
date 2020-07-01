@@ -3,19 +3,25 @@ use crate::value::Value;
 #[derive(Debug, Clone, Copy)]
 pub enum OpCode {
     OpReturn,
-    OpNegate,
+    OpPop,
+    
     OpConstant(usize), // Index of the constant we want to retrieve
+    OpNil,
+    OpTrue,
+    OpFalse,
+
+    OpNegate,
+    OpNot,
+
     OpAdd,
     OpSubtract,
     OpMultiply,
     OpDivide,
-    OpNil,
-    OpTrue,
-    OpFalse,
-    OpNot,
     OpEqual,
     OpGreater,
-    OpLess
+    OpLess,
+
+    OpPrint,
 }
 
 #[derive(Debug)]

@@ -9,11 +9,13 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn as_bool(&self) -> Option<bool> {
-        if let Value::Bool(val) = self {
-            Some(val.clone())
-        } else {
-            None
+    // Used for print statements, use {:?} debug formatting for trace and stack examining
+    pub fn to_string(&self) -> String {
+        match self {
+            Value::Double(x) => format!("{}",x),
+            Value::Bool(x) => format!("{}",x),
+            Value::LoxString(x) => format!("{}",x),
+            Value::Nil => String::from("Nil"),
         }
     }
 

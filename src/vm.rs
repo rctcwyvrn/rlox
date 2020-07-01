@@ -2,7 +2,7 @@ use crate::chunk::{Chunk, OpCode, Instr};
 use crate::debug::*;
 use crate::value::{Value, is_falsey, values_equal};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum InterpretResult {
     InterpretOK,
     InterpretCompileError,
@@ -35,9 +35,9 @@ impl VM<'_> {
         self.stack.pop().unwrap() // add runtime failure handling in here later
     }
 
-    fn peek(&self) -> &Value {
-        self.stack.last().unwrap()
-    }
+    // fn peek(&self) -> &Value {
+    //     self.stack.last().unwrap()
+    // }
 
     fn debug_trace(&self, instr: &Instr) {
         // DEBUG TRACE EXECUTION
@@ -85,8 +85,9 @@ impl VM<'_> {
 
             match instr.op_code {
                 OpCode::OpReturn => { 
-                    println!("temp return thing: {:?}", self.pop());
-                    return InterpretResult::InterpretOK
+                },
+                OpCode::OpPop => {
+                    self.pop();
                 },
 
                 OpCode::OpConstant(index) => self.push(self.chunk.get_constant(index)),
@@ -129,6 +130,10 @@ impl VM<'_> {
                         }
                     }
                 },
+
+                OpCode::OpPrint => {
+                    println!("{}",self.pop().to_string());
+                }
             }
         }
 

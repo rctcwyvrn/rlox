@@ -1,16 +1,18 @@
 use crate::chunk::{Chunk, Instr, OpCode};
 
 pub fn disassemble_chunk(chunk: &Chunk, name: &str) {
-    println!("== {} ==", name);
+    println!("== {} ==============", name);
     println!("byte\tline\tOpCode");
     let mut last_line_num = 0;
 
     for (i,instr) in chunk.code.iter().enumerate() {
-        let line_marker = if last_line_num == instr.line_num { " |".to_string() } else { instr.line_num.to_string() };
+        let line_marker = if last_line_num == instr.line_num { "|".to_string() } else { instr.line_num.to_string() };
         last_line_num = instr.line_num;
         print!("{}\t{}", i, line_marker);
         disassemble_instruction(instr, &chunk)
     }
+
+    println!("======================\n");
 }
 
 pub fn disassemble_instruction(instr: &Instr, chunk: &Chunk) {

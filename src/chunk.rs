@@ -5,6 +5,10 @@ pub enum OpCode {
     OpReturn,
     OpPop,
     
+    OpDefineGlobal(usize), // Index of the LoxString variable name in the vec
+    OpGetGlobal(usize), // ^
+    OpSetGlobal(usize), // ^
+
     OpConstant(usize), // Index of the constant we want to retrieve
     OpNil,
     OpTrue,

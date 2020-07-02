@@ -2,6 +2,8 @@ use crate::chunk::{Chunk, OpCode, Instr};
 use crate::debug::*;
 use crate::value::{Value, is_falsey, values_equal};
 
+use std::collections::HashMap;
+
 #[derive(Debug, PartialEq)]
 pub enum InterpretResult {
     InterpretOK,
@@ -19,12 +21,13 @@ pub struct VM<'a> {
     mode: ExecutionMode,
     chunk: &'a Chunk,
     stack: Vec<Value>,
+    globals: HashMap<String, Value>,
     ip: usize,
 }
 
 impl VM<'_> {
     pub fn init_vm(mode: ExecutionMode, chunk: &Chunk) -> VM {
-        VM { mode, chunk, stack: Vec::new(), ip: 0}
+        VM { mode, chunk, stack: Vec::new(), globals: HashMap::new(), ip: 0}
     }
 
     fn push(&mut self, val: Value) {
@@ -35,18 +38,31 @@ impl VM<'_> {
         self.stack.pop().unwrap() // add runtime failure handling in here later
     }
 
-    // fn peek(&self) -> &Value {
-    //     self.stack.last().unwrap()
-    // }
+    fn peek(&self) -> &Value {
+        self.stack.last().unwrap()
+    }
 
     fn debug_trace(&self, instr: &Instr) {
         // DEBUG TRACE EXECUTION
         println!("---");
-        print!("Next instr: ");
+        print!("> Next instr: ");
         disassemble_instruction(instr, self.chunk);
-        println!("Stack: ");
+        println!("> Stack: ");
         for value in &self.stack {
-            println!("[ {:?} ]", value);
+            println!(">> [ {:?} ]", value);
+        }
+        println!("> Globals: ");
+        for (name, val) in self.globals.iter() {
+            println!(">> {} => {:?}", name, val);
+        }
+        println!("---\n");
+    }
+
+    fn debug_print_constants(&self) {
+        println!("---");
+        println!("> Constants");
+        for val in &self.chunk.constants {
+            println!(">> [ {:?} ]", val);
         }
         println!("---\n");
     }
@@ -56,6 +72,15 @@ impl VM<'_> {
         let line = self.chunk.code.get(instr).unwrap().line_num;
         eprintln!("{}", msg);
         eprintln!("\t[line {}] in script\n", line);
+    }
+
+    fn get_variable_name(&self, index: usize) -> String {
+        let name_val = self.chunk.get_constant(index);
+        if let Value::LoxString(var_name) = name_val {
+            return var_name;
+        } else {
+            panic!("VM panic: Found a non LoxString value for a variable name");
+        }
     }
 
     pub fn run(mut self) -> InterpretResult {
@@ -74,6 +99,10 @@ impl VM<'_> {
             }
         }
 
+        if let ExecutionMode::Trace = self.mode {
+            self.debug_print_constants();
+        }
+
         println!("== Starting execution | Mode: {:?} ==", self.mode);
         while self.ip < self.chunk.code.len() {
             let instr = self.chunk.code.get(self.ip).unwrap();
@@ -84,11 +113,40 @@ impl VM<'_> {
             }
 
             match instr.op_code {
-                OpCode::OpReturn => { 
-                },
+                OpCode::OpReturn => { }, // soon
                 OpCode::OpPop => {
                     self.pop();
                 },
+                OpCode::OpDefineGlobal(index) => {
+                    let var_name = self.get_variable_name(index);
+                    let var_val = self.pop();
+                    self.globals.insert(var_name, var_val);
+                },
+                OpCode::OpGetGlobal(index) => {
+                    let var_name = self.get_variable_name(index);
+                    let var_val = self.globals.get(&var_name);
+                    match var_val {
+                        Some(x) => {
+                            let new = x.clone(); // Makes the borrow checker happy that we are no longer using the immutable borrow from globals.get
+                            self.push(new)
+                        },
+                        None => {
+                            self.runtime_error(&format!("Undefined variable '{}'", var_name)[..]) },
+                    }
+                }
+                OpCode::OpSetGlobal(index) => {
+                    let var_name = self.get_variable_name(index);
+
+                    // We don't want assignment to pop the value since this is an expression
+                    // this will almost always be in a expression statement, which will pop the value
+                    let var_val = self.peek().clone();
+                    if !self.globals.contains_key(&var_name) {
+                        self.runtime_error(&format!("Undefined variable '{}'", var_name)[..]);
+                        return InterpretResult::InterpretRuntimeError
+                    } else {
+                        self.globals.insert(var_name, var_val);
+                    }
+                }
 
                 OpCode::OpConstant(index) => self.push(self.chunk.get_constant(index)),
                 OpCode::OpTrue          => self.push(Value::Bool(true)),

@@ -17,7 +17,10 @@ pub fn disassemble_chunk(chunk: &Chunk, name: &str) {
 
 pub fn disassemble_instruction(instr: &Instr, chunk: &Chunk) {
     match instr.op_code {
-        OpCode::OpConstant(index) => print!("\t{:?} => {:?}\n", instr.op_code, chunk.constants.get(index).unwrap()),
+        OpCode::OpConstant(index) | 
+            OpCode::OpDefineGlobal(index) | 
+            OpCode::OpSetGlobal(index) |
+            OpCode::OpGetGlobal(index) => print!("\t{:?} => {:?}\n", instr.op_code, chunk.constants.get(index).unwrap()),
         _ => print!("\t{:?}\n", instr.op_code)
     }
 }

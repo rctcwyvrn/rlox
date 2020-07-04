@@ -6,6 +6,7 @@ use crate::debug::disassemble_chunk;
 
 pub struct Parser<'a> {
     scanner: Scanner<'a>,
+    compiler: Compiler,
     tokens: Vec<Token>,
     chunk: &'a mut Chunk,
     had_error: bool,
@@ -80,6 +81,7 @@ impl<'a> Parser<'a> {
     }
 
     fn emit_instr(&mut self, op_code: OpCode) {
+        // println!("Emitting instr {:?} from token {:?}", op_code, self.previous()); kinda useful
         self.chunk.write_instruction(Instr {
             op_code,
             line_num: self.previous().line_num
@@ -98,17 +100,26 @@ impl<'a> Parser<'a> {
         index
     }
 
-    // Match the identifier token and pass it into identifier_constant to be added to the chunk
-    // Returns the index of the variable name (stored as a LoxString) in the chunk's constant vec
-    fn parse_variable(&mut self, error_msg: &str) -> usize {
-        self.consume(TokenType::TokenIdentifier, error_msg);
-        let str_val = self.previous().lexemme.clone();
-        self.identifier_constant(&str_val)
+    fn begin_scope(&mut self) {
+        self.compiler.scope_depth+=1;
     }
 
-    // Given a token, add the string lexemme to the chunk as a constant and return the index
-    fn identifier_constant(&mut self, str_val: &String) -> usize {
-        self.chunk.add_constant(Value::LoxString(str_val.to_string()))
+    // Decrements the scope depth and pops off the values that went out of scope
+    fn end_scope(&mut self) {
+        self.compiler.scope_depth-=1;
+        let mut pops = 0;
+        for local in self.compiler.locals.iter().rev() {
+            if local.depth > self.compiler.scope_depth {
+                pops+=1;
+            } else {
+                break;
+            }
+        }
+
+        for _ in 0..pops {
+            self.emit_instr(OpCode::OpPop); // Remove old local variables
+            self.compiler.locals.pop();
+        }
     }
 
     fn end_compilation(&mut self) {
@@ -161,24 +172,100 @@ impl<'a> Parser<'a> {
         if self.panic_mode { self.synchronize(); }
     }
 
+    // parse_variable => consumes TokenIdentifier, adds the constant name to the cosntants vec, and returns the index
+    // define_variable => takes that index, and emits the instruction to bind it to the value on the top of the the stack
     fn var_declaration(&mut self) {
         let global = self.parse_variable("Expected variable name.");
         if self.match_cur(TokenType::TokenEqual) {
             self.expression();
         } else {
-            self.emit_instr(OpCode::OpNil)
+            self.emit_instr(OpCode::OpNil);
         }
         self.consume(TokenType::TokenSemicolon, "Expected ';' after variable declaration");
         self.define_variable(global);
     }
 
+    // Match the identifier token and pass it into identifier_constant to be added to the chunk if global
+    // Calls declare_variable() if local
+    fn parse_variable(&mut self, error_msg: &str) -> usize {
+        self.consume(TokenType::TokenIdentifier, error_msg);
+        self.declare_variable();
+
+        if self.compiler.is_global() {
+            let str_val = self.previous().lexemme.clone();
+            self.identifier_constant(&str_val)
+        } else {
+            0
+        }
+    }
+
+    // Declare new local variables by pushing them onto self.compiler.locals
+    // New locals are set to a special "uninitialized" state until define_variable() is called
+    fn declare_variable(&mut self) {
+        if !self.compiler.is_global() { // Must not be in the global scope in order to define local vars
+            let str_val = self.previous().lexemme.clone();
+            let mut found_eq = false; // Is this the idiomatic way of doing this?? I have no idea
+
+            for local in self.compiler.locals.iter() {
+                if local.depth != -1 && local.depth < self.compiler.scope_depth {
+                    break;
+                }
+                if str_val.eq(&local.name) {
+                    found_eq = true;
+                    break;
+                }
+            }
+
+            if found_eq {
+                self.error("Variable with this name already declared in this scope"); // Note: Can't just put this in the loop because it mutably borrows self
+            }
+            self.compiler.add_local(str_val);
+        }
+    }
+
+    // Walk and look for a local variable with the same name, returns -1 to signal that this name is a global
+    fn resolve_local(&mut self, name: &String) -> isize {
+        let mut error = false;
+        for (i, local) in self.compiler.locals.iter().enumerate() {
+            if local.name.eq(name){
+                if local.depth == -1  {
+                    error = true;
+                    break;
+                } else {
+                    return i as isize;
+                }
+            }
+        }
+
+        if error {
+            self.error("Cannot read local variable in its own initializer");
+        }
+        return -1;
+    }
+
+    // Given a token, add the string lexemme to the chunk as a constant and return the index
+    // Only used for global variables
+    fn identifier_constant(&mut self, str_val: &String) -> usize {
+        self.chunk.add_constant(Value::LoxString(str_val.to_string()))
+    }
+
+    // Emits the instruction to define the global variable
+    // or to set the local variable as initialized
     fn define_variable(&mut self, global: usize) {
-        self.emit_instr(OpCode::OpDefineGlobal(global))
+        if self.compiler.is_global() {
+            self.emit_instr(OpCode::OpDefineGlobal(global));
+        } else {
+            self.compiler.mark_initialized();
+        }
     }
 
     fn statement(&mut self) {
         if self.match_cur(TokenType::TokenPrint) {
             self.print_statement();
+        } else if self.match_cur(TokenType::TokenLeftBrace) {
+            self.begin_scope();
+            self.block();
+            self.end_scope();
         } else {
             self.expression_statement();
         }
@@ -188,6 +275,14 @@ impl<'a> Parser<'a> {
         self.expression();
         self.consume(TokenType::TokenSemicolon, "Expected ';' after value in print statement");
         self.emit_instr(OpCode::OpPrint);
+    }
+
+    fn block(&mut self) {
+        while !self.check(TokenType::TokenRightBrace) && !self.check(TokenType::TokenEOF) {
+            self.declaration();
+        }
+
+        self.consume(TokenType::TokenRightBrace, "Expected '}' after block"); // Fails if we hit EOF instead
     }
 
     fn expression_statement(&mut self) {
@@ -224,16 +319,22 @@ impl<'a> Parser<'a> {
         self.named_variable(name, can_assign)
     }
 
-    // Called by variable after finding a TokenIdentifier
+    // parsePrecedence with TokenIdentifier => variable() -> this(previous.lexemme) 
     // Could be a getter or a setter, so lookahead for a '='
     fn named_variable(&mut self, name: &String, can_assign: bool) {
-        let arg = self.identifier_constant(name); // Does NOT check at compile time if this variable can be resolved
+        let local_arg = self.resolve_local(name);
+        let (get_op, set_op) = if local_arg >= 0  {
+            (OpCode::OpGetLocal(local_arg as usize), OpCode::OpSetLocal(local_arg as usize))
+        } else {
+            let global_arg = self.identifier_constant(name); // Does NOT check at compile time if this variable can be resolved
+            (OpCode::OpGetGlobal(global_arg), OpCode::OpSetGlobal(global_arg))
+        };
 
         if self.match_cur(TokenType::TokenEqual) && can_assign {
             self.expression();
-            self.emit_instr(OpCode::OpSetGlobal(arg));
+            self.emit_instr(set_op);
         } else {
-            self.emit_instr(OpCode::OpGetGlobal(arg));
+            self.emit_instr(get_op);
         }
     }
 
@@ -276,10 +377,12 @@ impl<'a> Parser<'a> {
 
     pub fn init_parser(code: &'a String, chunk: &'a mut Chunk) -> Parser<'a> {
         let mut scanner = Scanner::init_scanner(code);
+        let compiler = Compiler { locals: Vec::new(), scope_depth: 0};
         let mut tokens = Vec::new();
-        tokens.push(scanner.scan_token()); // Only load up one value, because we start the parsing with a call to expression() -> parse_precedence() which will call advance()
+        tokens.push(scanner.scan_token());
         Parser {
             scanner,
+            compiler, 
             tokens,
             chunk,
             had_error: false,
@@ -293,9 +396,37 @@ impl<'a> Parser<'a> {
             self.declaration();
         }
         self.end_compilation();
-        disassemble_chunk(self.chunk, "test");
+        //disassemble_chunk(self.chunk, "test");
         return !self.had_error
     }
+}
+
+// Why is this named this way...
+struct Compiler {
+    locals: Vec<Local>,
+    scope_depth: isize
+}
+
+impl Compiler {
+    fn is_global(&self) -> bool {
+        self.scope_depth == 0
+    }
+
+    fn add_local(&mut self, name: String) {
+        let local = Local {
+            name, 
+            depth: -1 // Scope depth is initially set to -1 to indicate that the value is not yet initialized and cannot be used
+        };
+        self.locals.push(local);
+    }
+
+    fn mark_initialized(&mut self) {
+        self.locals.last_mut().unwrap().depth = self.scope_depth;
+    }
+}
+struct Local {
+    name: String,
+    depth: isize
 }
 
 // Removes the surrounding "" around TokenString lexemmes

@@ -101,9 +101,8 @@ impl VM<'_> {
 
         if let ExecutionMode::Trace = self.mode {
             self.debug_print_constants();
+            println!("== Starting execution | Mode: {:?} ==", self.mode);
         }
-
-        println!("== Starting execution | Mode: {:?} ==", self.mode);
         while self.ip < self.chunk.code.len() {
             let instr = self.chunk.code.get(self.ip).unwrap();
             self.ip = self.ip + 1;
@@ -113,7 +112,7 @@ impl VM<'_> {
             }
 
             match instr.op_code {
-                OpCode::OpReturn => { }, // soon
+                OpCode::OpReturn => { return InterpretResult::InterpretOK }, // soon
                 OpCode::OpPop => {
                     self.pop();
                 },
@@ -127,11 +126,13 @@ impl VM<'_> {
                     let var_val = self.globals.get(&var_name);
                     match var_val {
                         Some(x) => {
-                            let new = x.clone(); // Makes the borrow checker happy that we are no longer using the immutable borrow from globals.get
+                            let new = x.clone();
                             self.push(new)
                         },
                         None => {
-                            self.runtime_error(&format!("Undefined variable '{}'", var_name)[..]) },
+                            self.runtime_error(&format!("Undefined variable '{}'", var_name)[..]);
+                            return InterpretResult::InterpretRuntimeError;
+                        },
                     }
                 }
                 OpCode::OpSetGlobal(index) => {
@@ -147,11 +148,13 @@ impl VM<'_> {
                         self.globals.insert(var_name, var_val);
                     }
                 }
+                OpCode::OpGetLocal(index) => self.push(self.stack[index].clone()),    // Note: We gotta clone these values around the stack because our operators pop off the top and we also don't want to modify the variable value
+                OpCode::OpSetLocal(index) => self.stack[index] = self.peek().clone(), // Same idea as OpSetGlobal, don't pop value since it's an expression
 
                 OpCode::OpConstant(index) => self.push(self.chunk.get_constant(index)),
-                OpCode::OpTrue          => self.push(Value::Bool(true)),
-                OpCode::OpFalse         => self.push(Value::Bool(false)),
-                OpCode::OpNil           => self.push(Value::Nil),
+                OpCode::OpTrue            => self.push(Value::Bool(true)),
+                OpCode::OpFalse           => self.push(Value::Bool(false)),
+                OpCode::OpNil             => self.push(Value::Nil),
                 
                 OpCode::OpAdd           => {
                     let t = (self.pop(), self.pop());
@@ -164,9 +167,9 @@ impl VM<'_> {
                         return InterpretResult::InterpretRuntimeError;
                     }
                 },
-                OpCode::OpSubtract      => op_binary!(Value::Double,-),
-                OpCode::OpMultiply      => op_binary!(Value::Double,*),
-                OpCode::OpDivide        => op_binary!(Value::Double,/),
+                OpCode::OpSubtract      => op_binary!(Value::Double, -),
+                OpCode::OpMultiply      => op_binary!(Value::Double, *),
+                OpCode::OpDivide        => op_binary!(Value::Double, /),
                 OpCode::OpGreater       => op_binary!(Value::Bool, >),
                 OpCode::OpLess          => op_binary!(Value::Bool, <),
                 OpCode::OpEqual => {

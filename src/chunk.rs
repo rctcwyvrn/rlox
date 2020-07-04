@@ -9,6 +9,9 @@ pub enum OpCode {
     OpGetGlobal(usize), // ^
     OpSetGlobal(usize), // ^
 
+    OpGetLocal(usize),
+    OpSetLocal(usize),
+
     OpConstant(usize), // Index of the constant we want to retrieve
     OpNil,
     OpTrue,

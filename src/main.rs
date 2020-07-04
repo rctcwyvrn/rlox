@@ -66,7 +66,7 @@ fn interpret(source: &String) -> InterpretResult {
         return InterpretResult::InterpretCompileError;
     }
 
-    let vm = VM::init_vm(ExecutionMode::Trace, &chunk);
-    //let vm = VM::init_vm(ExecutionMode::Default, &chunk);
+    //let vm = VM::init_vm(ExecutionMode::Trace, &chunk);
+    let vm = VM::init_vm(ExecutionMode::Default, &chunk);
     vm.run()
 }

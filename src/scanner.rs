@@ -98,6 +98,7 @@ impl Scanner<'_> {
                     while self.peek() != b'\n' && !self.is_at_end() {
                         self.advance();
                     }
+                    self.advance(); // consume the \n
                     self.cur_line+=1;
                 }
             } else {

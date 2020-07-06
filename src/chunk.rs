@@ -12,6 +12,10 @@ pub enum OpCode {
     OpGetLocal(usize),
     OpSetLocal(usize),
 
+    OpJump(usize), // Jump ip offset
+    OpJumpIfFalse(usize),
+    OpLoop(usize), // Jump backwards by offset
+    
     OpConstant(usize), // Index of the constant we want to retrieve
     OpNil,
     OpTrue,

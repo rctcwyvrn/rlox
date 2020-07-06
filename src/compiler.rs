@@ -100,6 +100,43 @@ impl<'a> Parser<'a> {
         index
     }
 
+    // Emits OpCode::OpJump
+    fn emit_jump(&mut self) -> usize {
+        self.emit_instr(OpCode::OpJump(usize::max_value())); 
+        self.chunk.code.len() - 1
+    }
+
+    // Emits OpCode::OpJumpIfFalse
+    fn emit_jif(&mut self) -> usize {
+        self.emit_instr(OpCode::OpJumpIfFalse(usize::max_value())); 
+        self.chunk.code.len() - 1
+    }
+
+    // Given the index of the jump instruction in the chunk, update the opcode to jump to the instruction after the current one
+    fn patch_jump(&mut self, offset: usize) {
+        let jump_amount = self.chunk.code.len() - offset - 1;
+        if jump_amount > usize::max_value() {
+            self.error("Too much code to jump over.");
+        }
+          
+        let jump_instr = self.chunk.code.get_mut(offset).unwrap();
+        macro_rules! replace_jump {
+            ($jump_type: path) => {{jump_instr.op_code = $jump_type(jump_amount)}}
+        }
+
+        match jump_instr.op_code {
+            OpCode::OpJump(_) => replace_jump!(OpCode::OpJump),
+            OpCode::OpJumpIfFalse(_) => replace_jump!(OpCode::OpJumpIfFalse),
+            _ => self.error(&format!("Attempted to patch a non_jump op code instruction: {:?}", self.chunk.code.get(offset).unwrap())),
+        }
+    }
+
+    // loop_start: Index of the instruction to jump back to
+    fn emit_loop(&mut self, loop_start: usize) {
+        let loop_op = OpCode::OpLoop(self.chunk.code.len() - loop_start);
+        self.emit_instr(loop_op);
+    }
+
     fn begin_scope(&mut self) {
         self.compiler.scope_depth+=1;
     }
@@ -160,6 +197,8 @@ impl<'a> Parser<'a> {
             ParseFn::Literal    => self.literal(),
             ParseFn::String     => self.string(),
             ParseFn::Variable   => self.variable(can_assign),
+            ParseFn::And        => self.and_operator(),
+            ParseFn::Or         => self.or_operator(),
         }
     }
 
@@ -262,6 +301,12 @@ impl<'a> Parser<'a> {
     fn statement(&mut self) {
         if self.match_cur(TokenType::TokenPrint) {
             self.print_statement();
+        } else if self.match_cur(TokenType::TokenIf) {
+            self.if_statement();
+        } else if self.match_cur(TokenType::TokenWhile) {
+            self.while_statement();
+        } else if self.match_cur(TokenType::TokenFor) {
+            self.for_statement();
         } else if self.match_cur(TokenType::TokenLeftBrace) {
             self.begin_scope();
             self.block();
@@ -275,6 +320,94 @@ impl<'a> Parser<'a> {
         self.expression();
         self.consume(TokenType::TokenSemicolon, "Expected ';' after value in print statement");
         self.emit_instr(OpCode::OpPrint);
+    }
+
+    fn if_statement(&mut self) {
+        self.consume(TokenType::TokenLeftParen, "Expected '(' after 'if'");
+        self.expression();
+        self.consume(TokenType::TokenRightParen, "Expected ')' after condition");
+
+        // Keep track of where we put the first conditional jump
+        let jump_index = self.emit_jif();
+
+        self.emit_instr(OpCode::OpPop); // Pop off the if conditional in the 'then' case
+        self.statement(); // Then case
+        let else_jump = self.emit_jump(); // Keep track of where we put the jump to go over the else statement
+        self.patch_jump(jump_index);
+
+        if self.match_cur(TokenType::TokenElse) {
+            self.emit_instr(OpCode::OpPop); // Pop off the if conditional if we jump over the 'then' case
+            self.statement(); // Else case
+        }
+        self.patch_jump(else_jump);
+    }
+
+    fn while_statement(&mut self) {
+        let loop_start = self.chunk.code.len() - 1;
+        
+        self.consume(TokenType::TokenLeftParen, "Expected '(' after 'while'");
+        self.expression();
+        self.consume(TokenType::TokenRightParen, "Expected ')' after loop condition");
+
+        let exit_jump = self.emit_jif();
+
+        self.emit_instr(OpCode::OpPop);
+        self.statement();
+        self.emit_loop(loop_start);
+
+        self.patch_jump(exit_jump);
+        self.emit_instr(OpCode::OpPop);
+    }
+
+    fn for_statement(&mut self) {
+        self.consume(TokenType::TokenLeftParen, "Expected '(' after 'for'");
+        
+        self.begin_scope();
+
+        // First clause: Can be var declaration or expresion
+        if self.match_cur(TokenType::TokenSemicolon) {
+            // Do nothing
+        } else if self.match_cur(TokenType::TokenVar) {
+            self.var_declaration();
+        } else {
+            self.expression_statement(); //
+        }
+
+        let mut loop_start = self.chunk.code.len() - 1; // Loop should include 2nd and 3rd clauses (if they exist)
+        let mut exit_jump = None;
+
+        // Loop conditional
+        if !self.match_cur(TokenType::TokenSemicolon) {
+            self.expression();
+            self.consume(TokenType::TokenSemicolon, "Expected ';' after loop condition");
+            exit_jump = Some(self.emit_jif());
+            self.emit_instr(OpCode::OpPop); // Pop condition if we didn't jump
+        } // Note: if this conditional is not found, then there is no way to jump out of the loop
+
+        if !self.match_cur(TokenType::TokenRightParen) {
+            // Jump to body, set this point to be the one to loop back to after executing the body, jump to next iteration
+            let body_jump = self.emit_jump(); // Jump to after the increment and the loop
+
+            let increment_start = self.chunk.code.len() - 1;
+            self.expression(); // Parse the increment expression
+            self.emit_instr(OpCode::OpPop); // Pop the remaining value
+            self.consume(TokenType::TokenRightParen, "Expected ')' after for loop clauses");
+
+            self.emit_loop(loop_start); // Loop back to the start after increment
+            loop_start = increment_start; // Make the body go to the start of the increment instead of the start of the loop
+
+            self.patch_jump(body_jump); // Patching up the body jump
+        }
+
+        self.statement();
+        self.emit_loop(loop_start);
+
+        if let Some(offset) = exit_jump {
+            self.patch_jump(offset);
+            self.emit_instr(OpCode::OpPop);
+        }
+
+        self.end_scope();
     }
 
     fn block(&mut self) {
@@ -293,6 +426,29 @@ impl<'a> Parser<'a> {
 
     fn expression(&mut self) {
         self.parse_precedence(Precedence::PrecAssignment)
+    }
+
+    fn and_operator(&mut self) {
+        let end_jump = self.emit_jif();
+
+        self.emit_instr(OpCode::OpPop);
+        self.parse_precedence(Precedence::PrecAnd); // Parse right hand side of the infix expression
+        self.patch_jump(end_jump); // Jump to after it if the first argument was already false, leaving the false value on the top of the stack to be the result
+        // Otherwise the first argument is true, so the value of the whole and is equal to the value of the second argument, so just proceed as normal
+    }
+
+    fn or_operator(&mut self) {
+        // If false then execute the other expression
+        let else_jump = self.emit_jif();
+
+        // If the first one is already truthy, go to the end
+        let end_jump = self.emit_jump();
+
+        self.patch_jump(else_jump);
+        self.emit_instr(OpCode::OpPop);
+        self.parse_precedence(Precedence::PrecOr);
+
+        self.patch_jump(end_jump);
     }
 
     fn number(&mut self) {
@@ -319,7 +475,7 @@ impl<'a> Parser<'a> {
         self.named_variable(name, can_assign)
     }
 
-    // parsePrecedence with TokenIdentifier => variable() -> this(previous.lexemme) 
+    // parse_precedence with TokenIdentifier => variable() -> this(previous.lexemme) 
     // Could be a getter or a setter, so lookahead for a '='
     fn named_variable(&mut self, name: &String, can_assign: bool) {
         let local_arg = self.resolve_local(name);
@@ -396,7 +552,7 @@ impl<'a> Parser<'a> {
             self.declaration();
         }
         self.end_compilation();
-        //disassemble_chunk(self.chunk, "test");
+        disassemble_chunk(self.chunk, "test");
         return !self.had_error
     }
 }

@@ -27,6 +27,8 @@ pub enum ParseFn {
     Literal,
     String,
     Variable,
+    And,
+    Or,
 }
 
 pub struct ParseRule {
@@ -163,6 +165,16 @@ const PARSE_RULE_ID: ParseRule = ParseRule {
     infix: ParseFn::None,
     precedence: Precedence::PrecNone
 };
+const PARSE_RULE_AND: ParseRule = ParseRule {
+    prefix: ParseFn::None,
+    infix: ParseFn::And,
+    precedence: Precedence::PrecAnd
+};
+const PARSE_RULE_OR: ParseRule = ParseRule {
+    prefix: ParseFn::None,
+    infix: ParseFn::Or,
+    precedence: Precedence::PrecOr
+};
 
 pub fn get_rule(operator: TokenType) -> ParseRule {
     match operator {
@@ -184,6 +196,8 @@ pub fn get_rule(operator: TokenType) -> ParseRule {
         TokenType::TokenLessEqual   => PARSE_RULE_LE,
         TokenType::TokenString      => PARSE_RULE_STR,
         TokenType::TokenIdentifier  => PARSE_RULE_ID,
+        TokenType::TokenAnd         => PARSE_RULE_AND,
+        TokenType::TokenOr          => PARSE_RULE_OR,
         _                           => PARSE_RULE_NONE
     }
 }

@@ -43,10 +43,9 @@ impl VM<'_> {
     }
 
     fn debug_trace(&self, instr: &Instr) {
-        // DEBUG TRACE EXECUTION
         println!("---");
-        print!("> Next instr: ");
-        disassemble_instruction(instr, self.chunk);
+        print!("> Next instr (#{}): ", self.ip - 1);
+        disassemble_instruction(instr, self.chunk, self.ip - 1);
         println!("> Stack: ");
         for value in &self.stack {
             println!(">> [ {:?} ]", value);
@@ -90,7 +89,7 @@ impl VM<'_> {
                 {
                     //if let ($val_type(a), $val_type(b)) = (self.pop(), self.pop()) {
                     if let (Value::Double(a), Value::Double(b)) = (self.pop(), self.pop()) {
-                        self.push($val_type(a $oper b))
+                        self.push($val_type(b $oper a))
                     } else {
                         self.runtime_error("Operands must be numbers");
                         return InterpretResult::InterpretRuntimeError;
@@ -103,6 +102,7 @@ impl VM<'_> {
             self.debug_print_constants();
             println!("== Starting execution | Mode: {:?} ==", self.mode);
         }
+
         while self.ip < self.chunk.code.len() {
             let instr = self.chunk.code.get(self.ip).unwrap();
             self.ip = self.ip + 1;
@@ -151,6 +151,14 @@ impl VM<'_> {
                 OpCode::OpGetLocal(index) => self.push(self.stack[index].clone()),    // Note: We gotta clone these values around the stack because our operators pop off the top and we also don't want to modify the variable value
                 OpCode::OpSetLocal(index) => self.stack[index] = self.peek().clone(), // Same idea as OpSetGlobal, don't pop value since it's an expression
 
+                OpCode::OpJump(offset) => self.ip += offset, // Kinda really gross
+                OpCode::OpJumpIfFalse(offset) => {
+                    if is_falsey(self.peek()) { // Does not pop the value off the top of the stack because we need them for logical operators
+                        self.ip += offset;
+                    }
+                },
+                OpCode::OpLoop(neg_offset) => self.ip -= neg_offset,
+
                 OpCode::OpConstant(index) => self.push(self.chunk.get_constant(index)),
                 OpCode::OpTrue            => self.push(Value::Bool(true)),
                 OpCode::OpFalse           => self.push(Value::Bool(false)),
@@ -178,7 +186,7 @@ impl VM<'_> {
                 },
 
                 OpCode::OpNot => {
-                    let val = Value::Bool(is_falsey(self.pop()));
+                    let val = Value::Bool(is_falsey(&self.pop()));
                     self.push(val);
                 },
                 OpCode::OpNegate => {

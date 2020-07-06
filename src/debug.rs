@@ -9,18 +9,21 @@ pub fn disassemble_chunk(chunk: &Chunk, name: &str) {
         let line_marker = if last_line_num == instr.line_num { "|".to_string() } else { instr.line_num.to_string() };
         last_line_num = instr.line_num;
         print!("{}\t{}", i, line_marker);
-        disassemble_instruction(instr, &chunk)
+        disassemble_instruction(instr, &chunk, i)
     }
 
     println!("======================\n");
 }
 
-pub fn disassemble_instruction(instr: &Instr, chunk: &Chunk) {
+pub fn disassemble_instruction(instr: &Instr, chunk: &Chunk, instr_offset: usize) {
     match instr.op_code {
         OpCode::OpConstant(index) | 
             OpCode::OpDefineGlobal(index) | 
             OpCode::OpSetGlobal(index) |
-            OpCode::OpGetGlobal(index) => print!("\t{:?} => {:?}\n", instr.op_code, chunk.constants.get(index).unwrap()),
-        _ => print!("\t{:?}\n", instr.op_code)
+            OpCode::OpGetGlobal(index) => println!("\t{:?} => {:?}", instr.op_code, chunk.constants.get(index).unwrap()),
+        OpCode::OpJump(jump_offset) |
+            OpCode::OpJumpIfFalse(jump_offset) => println!("\t{:?} | jump -> {}", instr.op_code, instr_offset + jump_offset + 1),
+        OpCode::OpLoop(neg_offset) => println!("\t{:?} | loop back -> {}", instr.op_code, instr_offset - neg_offset + 1),
+        _ => println!("\t{:?}", instr.op_code)
     }
 }

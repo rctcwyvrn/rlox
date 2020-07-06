@@ -28,7 +28,7 @@ impl Value {
     }
 }
 
-pub fn is_falsey(val: Value) -> bool {
+pub fn is_falsey(val: &Value) -> bool {
     match val {
         Value::Bool(false) => true,
         Value::Nil => true,

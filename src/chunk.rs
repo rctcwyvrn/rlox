@@ -64,7 +64,7 @@ impl Chunk {
         }
     }
 
-    pub fn init_chunk() -> Chunk {
+    pub fn new() -> Chunk {
         Chunk {
             code: Vec::new(),
             constants: Vec::new()

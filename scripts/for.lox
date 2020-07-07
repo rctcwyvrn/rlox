@@ -1,4 +1,4 @@
-for(var i = 0; i <= 5;) {
-    print(i);
-    i = i + 1;
+for(var i = 0; i <= 500000; i = i + 1) {
+    var x = i + 3.14;
+    x + 1;
 }

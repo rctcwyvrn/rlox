@@ -6,9 +6,12 @@ use crate::debug::disassemble_chunk;
 
 pub struct Parser<'a> {
     scanner: Scanner<'a>,
-    compiler: Compiler,
     tokens: Vec<Token>,
+
     chunk: &'a mut Chunk,
+    locals: Vec<Local>,
+    scope_depth: usize,
+
     had_error: bool,
     panic_mode: bool,
 }
@@ -138,24 +141,26 @@ impl<'a> Parser<'a> {
     }
 
     fn begin_scope(&mut self) {
-        self.compiler.scope_depth+=1;
+        self.scope_depth+=1;
     }
 
     // Decrements the scope depth and pops off the values that went out of scope
     fn end_scope(&mut self) {
-        self.compiler.scope_depth-=1;
+        self.scope_depth-=1;
         let mut pops = 0;
-        for local in self.compiler.locals.iter().rev() {
-            if local.depth > self.compiler.scope_depth {
-                pops+=1;
-            } else {
-                break;
+        for local in self.locals.iter().rev() {
+            if let Some(x) = local.depth {
+                if x > self.scope_depth {
+                    pops+=1;
+                } else {
+                    break;
+                }
             }
         }
 
         for _ in 0..pops {
             self.emit_instr(OpCode::OpPop); // Remove old local variables
-            self.compiler.locals.pop();
+            self.locals.pop();
         }
     }
 
@@ -230,7 +235,7 @@ impl<'a> Parser<'a> {
         self.consume(TokenType::TokenIdentifier, error_msg);
         self.declare_variable();
 
-        if self.compiler.is_global() {
+        if self.is_global() {
             let str_val = self.previous().lexemme.clone();
             self.identifier_constant(&str_val)
         } else {
@@ -238,16 +243,18 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // Declare new local variables by pushing them onto self.compiler.locals
+    // Declare new local variables by pushing them onto self.locals
     // New locals are set to a special "uninitialized" state until define_variable() is called
     fn declare_variable(&mut self) {
-        if !self.compiler.is_global() { // Must not be in the global scope in order to define local vars
+        if !self.is_global() { // Must not be in the global scope in order to define local vars
             let str_val = self.previous().lexemme.clone();
             let mut found_eq = false; // Is this the idiomatic way of doing this?? I have no idea
 
-            for local in self.compiler.locals.iter() {
-                if local.depth != -1 && local.depth < self.compiler.scope_depth {
-                    break;
+            for local in self.locals.iter() {
+                if let Some(x) = local.depth {
+                    if x < self.scope_depth {
+                        break;
+                    }
                 }
                 if str_val.eq(&local.name) {
                     found_eq = true;
@@ -258,20 +265,20 @@ impl<'a> Parser<'a> {
             if found_eq {
                 self.error("Variable with this name already declared in this scope"); // Note: Can't just put this in the loop because it mutably borrows self
             }
-            self.compiler.add_local(str_val);
+            self.add_local(str_val);
         }
     }
 
     // Walk and look for a local variable with the same name, returns -1 to signal that this name is a global
-    fn resolve_local(&mut self, name: &String) -> isize {
+    fn resolve_local(&mut self, name: &String) -> Option<usize> {
         let mut error = false;
-        for (i, local) in self.compiler.locals.iter().enumerate() {
+        for (i, local) in self.locals.iter().enumerate() {
             if local.name.eq(name){
-                if local.depth == -1  {
+                if local.depth == None  {
                     error = true;
                     break;
                 } else {
-                    return i as isize;
+                    return Some(i);
                 }
             }
         }
@@ -279,7 +286,7 @@ impl<'a> Parser<'a> {
         if error {
             self.error("Cannot read local variable in its own initializer");
         }
-        return -1;
+        return None;
     }
 
     // Given a token, add the string lexemme to the chunk as a constant and return the index
@@ -291,10 +298,10 @@ impl<'a> Parser<'a> {
     // Emits the instruction to define the global variable
     // or to set the local variable as initialized
     fn define_variable(&mut self, global: usize) {
-        if self.compiler.is_global() {
+        if self.is_global() {
             self.emit_instr(OpCode::OpDefineGlobal(global));
         } else {
-            self.compiler.mark_initialized();
+            self.mark_initialized();
         }
     }
 
@@ -479,8 +486,8 @@ impl<'a> Parser<'a> {
     // Could be a getter or a setter, so lookahead for a '='
     fn named_variable(&mut self, name: &String, can_assign: bool) {
         let local_arg = self.resolve_local(name);
-        let (get_op, set_op) = if local_arg >= 0  {
-            (OpCode::OpGetLocal(local_arg as usize), OpCode::OpSetLocal(local_arg as usize))
+        let (get_op, set_op) = if let Some(local_index) = local_arg  {
+            (OpCode::OpGetLocal(local_index), OpCode::OpSetLocal(local_index))
         } else {
             let global_arg = self.identifier_constant(name); // Does NOT check at compile time if this variable can be resolved
             (OpCode::OpGetGlobal(global_arg), OpCode::OpSetGlobal(global_arg))
@@ -531,15 +538,15 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn init_parser(code: &'a String, chunk: &'a mut Chunk) -> Parser<'a> {
+    pub fn new(code: &'a String, chunk: &'a mut Chunk) -> Parser<'a> {
         let mut scanner = Scanner::init_scanner(code);
-        let compiler = Compiler { locals: Vec::new(), scope_depth: 0};
         let mut tokens = Vec::new();
         tokens.push(scanner.scan_token());
         Parser {
             scanner,
-            compiler, 
             tokens,
+            locals: Vec::new(), 
+            scope_depth: 0,
             chunk,
             had_error: false,
             panic_mode: false,
@@ -555,15 +562,7 @@ impl<'a> Parser<'a> {
         disassemble_chunk(self.chunk, "test");
         return !self.had_error
     }
-}
 
-// Why is this named this way...
-struct Compiler {
-    locals: Vec<Local>,
-    scope_depth: isize
-}
-
-impl Compiler {
     fn is_global(&self) -> bool {
         self.scope_depth == 0
     }
@@ -571,18 +570,19 @@ impl Compiler {
     fn add_local(&mut self, name: String) {
         let local = Local {
             name, 
-            depth: -1 // Scope depth is initially set to -1 to indicate that the value is not yet initialized and cannot be used
+            depth: None
         };
         self.locals.push(local);
     }
 
     fn mark_initialized(&mut self) {
-        self.locals.last_mut().unwrap().depth = self.scope_depth;
+        self.locals.last_mut().unwrap().depth = Some(self.scope_depth);
     }
 }
+
 struct Local {
     name: String,
-    depth: isize
+    depth: Option<usize>
 }
 
 // Removes the surrounding "" around TokenString lexemmes

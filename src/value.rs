@@ -4,8 +4,6 @@ pub enum Value {
     Bool(bool),
     Nil,
     LoxString(String), 
-    // I have no idea if this does what I want it to do, does this go on the stack or on the heap? String objects must be on the heap right? 
-    // Does rust do all the hard work for me?
 }
 
 impl Value {

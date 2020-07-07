@@ -17,63 +17,70 @@ pub enum ExecutionMode {
     Trace
 }
 
-// struct CallFrame<'a> {
-//     function: &'a FunctionChunk,
-//     ip: usize,
-//     frame_start: usize,
-// }
-
-// pub struct VM<'a> {
-//     mode: ExecutionMode,
-//     stack: Vec<Value>,
-//     frames: Vec<CallFrame<'a>>,
-//     globals: HashMap<String, Value>,
-// }
-
 // Mutable VM state: stack, frames, ip within the frames, globals <-- this struct should be built in run and mutated in there
 // Immutable VM values: mode, function chunks (code + constants) <-- this struct should be passed from the compiler as an immutable reference
 
 #[derive(Debug, Clone, Copy)]
 struct CallFrame {
-    function: usize,
+    function: usize, // Index into the VM.functions Vec for which function is being called
     ip: usize,
     frame_start: usize,
 }
 
 struct VMState {
     stack: Vec<Value>,
-    frames: Vec<CallFrame_2>,
+    frames: Vec<CallFrame>,
     globals: HashMap<String, Value>,
 }
 
-struct VM {
-    mode: ExecutionMode,
-    functions: Vec<FunctionChunk>,
-}
-
-impl VM {
-    pub fn init_vm<'a>(mode: ExecutionMode, function: &'a FunctionChunk) -> VM {
-        let mut frames = Vec::new();
-        frames.push(CallFrame {function, ip: 0, frame_start: 0});
-        VM { mode, stack: Vec::new(), frames, globals: HashMap::new() }
-    }
-
+impl VMState {
     fn push(&mut self, val: Value) {
         self.stack.push(val)
     }
 
     fn pop(&mut self) -> Value {
-        self.stack.pop().unwrap() // add runtime failure handling in here later
+        match self.stack.pop() {
+            Some(x) => x,
+            None => panic!("VM panic! Attempted to pop a value when the value stack was empty")
+        }
     }
 
     fn peek(&self) -> &Value {
         self.stack.last().unwrap()
     }
 
-    fn debug_trace(&self, instr: &Instr, frame: &CallFrame) {
-        println!("---");
-        print!("> Next instr (#{}): ", frame.ip - 1);
-        disassemble_instruction(instr, &frame.function.chunk, frame.ip - 1);
+    fn frame(&self) -> &CallFrame {
+        match self.frames.last() {
+            Some(x) => x,
+            None => panic!("VM panic! Ran out of call frames?"),
+        }
+    }
+
+    fn frame_mut(&mut self) -> &mut CallFrame {
+        match self.frames.last_mut() {
+            Some(x) => x,
+            None => panic!("VM panic! Ran out of call frames?"),
+        }
+    }
+
+    // Returns the index into the stack where the current call frame's relative stack starts
+    fn frame_start(&self) -> usize {
+        self.frame().frame_start
+    }
+    
+    fn increment_ip(&mut self) {
+        self.frame_mut().ip+=1;
+    }
+
+    fn jump(&mut self, offset: usize) {
+        self.frame_mut().ip += offset;
+    }
+
+    fn jump_back(&mut self, neg_offset: usize) {
+        self.frame_mut().ip -= neg_offset;
+    }
+
+    fn debug_trace(&self) {
         println!("> Stack: ");
         for value in &self.stack {
             println!(">> [ {:?} ]", value);
@@ -82,29 +89,74 @@ impl VM {
         for (name, val) in self.globals.iter() {
             println!(">> {} => {:?}", name, val);
         }
+    }
+
+    fn new() -> VMState {
+        let first_fn = CallFrame {
+            function: 0,
+            ip: 0,
+            frame_start: 0,
+        };
+
+        let mut frames = Vec::new();
+        frames.push(first_fn);
+
+        let first_val = Value::LoxFunction(0);
+        let mut stack = Vec::new();
+        stack.push(first_val);
+        VMState {
+            stack,
+            frames,
+            globals:  HashMap::new(),
+        }
+    }
+}
+
+pub struct VM {
+    mode: ExecutionMode,
+    functions: Vec<FunctionChunk>,
+}
+
+impl VM {
+    pub fn new<'a>(mode: ExecutionMode, functions: Vec<FunctionChunk>) -> VM {
+        VM { mode, functions }
+    }
+
+    fn get_chunk(&self, state: &VMState) -> &FunctionChunk {
+        match self.functions.get(state.frame().function) {
+            Some(x) => x,
+            None => panic!("VM panic! Invalid CallFrame function index"),
+        }
+    }
+
+    fn debug_trace(&self, instr: &Instr, state: &VMState) {
+        println!("---");
+        print!("> Next instr (#{}): ", state.frame().ip - 1);
+        disassemble_instruction(instr, &self.get_chunk(state).chunk, state.frame().ip - 1);
+        state.debug_trace();
         println!("---\n");
     }
 
     fn debug_print_constants(&self) {
         println!("---");
         println!("> Constants");
-        for frame in self.frames.iter(){
-            for val in frame.function.chunk.constants.iter() {
+        for fn_chunk in self.functions.iter(){
+            for val in fn_chunk.chunk.constants.iter() {
                 println!(">> [ {:?} ]", val);
             }
         }
         println!("---\n");
     }
 
-    fn runtime_error(&self, msg: &str, frame: &CallFrame) {
-        let instr = frame.ip - 1;
-        let line = frame.function.chunk.code.get(instr).unwrap().line_num;
+    fn runtime_error(&self, msg: &str, state: &VMState) {
+        let instr = state.frame().ip - 1;
+        let line = self.get_chunk(state).chunk.code.get(instr).unwrap().line_num;
         eprintln!("{}", msg);
         eprintln!("\t[line {}] in script\n", line);
     }
 
-    fn get_variable_name(&self, index: usize, frame: &CallFrame) -> String {
-        let name_val = frame.function.chunk.get_constant(index);
+    fn get_variable_name(&self, index: usize, state: &VMState) -> String {
+        let name_val = self.get_chunk(state).chunk.get_constant(index);
         if let Value::LoxString(var_name) = name_val {
             return var_name;
         } else {
@@ -112,101 +164,114 @@ impl VM {
         }
     }
 
-    pub fn run(mut self) -> InterpretResult {
-        let mut frame = self.frames.last().unwrap();
-        // throw this bad boi in here
+    fn get_instr(&self, state: &VMState) -> Option<&Instr> {
+        let frame = state.frame();
+        let fun = self.functions.get(frame.function)?;
+        let instr = fun.chunk.code.get(frame.ip)?;
+        Some(instr)
+    }
+
+    pub fn run(&self) -> InterpretResult {
+        if let ExecutionMode::Trace = self.mode {
+            self.debug_print_constants();
+            println!("== Starting execution | Mode: {:?} ==", self.mode);
+        }
+
+        let mut state = VMState::new();
+
+        // Move this into a match arm that matches all the binary ops, and then matches on the individual opcodes?
         macro_rules! op_binary {
             ($val_type: path, $oper: tt) => {
                 {
                     //if let ($val_type(a), $val_type(b)) = (self.pop(), self.pop()) {
-                    if let (Value::Double(a), Value::Double(b)) = (self.pop(), self.pop()) {
-                        self.push($val_type(b $oper a))
+                    if let (Value::Double(a), Value::Double(b)) = (state.pop(), state.pop()) {
+                        state.push($val_type(b $oper a))
                     } else {
-                        self.runtime_error("Operands must be numbers", frame);
+                        self.runtime_error("Operands must be numbers", &state);
                         return InterpretResult::InterpretRuntimeError;
                     }
                 }
             }
         }
 
-        if let ExecutionMode::Trace = self.mode {
-            self.debug_print_constants();
-            println!("== Starting execution | Mode: {:?} ==", self.mode);
-        }
 
         loop {
-            let instr = frame.function.chunk.code.get(frame.ip);
+            let instr = self.get_instr(&state);
             if let None = instr {
-                panic!("Frame ip was invalid for the current frame?");
+                panic!("VM panic! Unable to get next instruction :c");
             }
+
             let instr = instr.unwrap();
-            frame.ip += 1;
+            state.increment_ip();
 
             if let ExecutionMode::Trace = self.mode {
-                self.debug_trace(&instr, frame);
+                self.debug_trace(&instr, &state);
             }
 
             match instr.op_code {
                 OpCode::OpReturn => { return InterpretResult::InterpretOK }, // soon
                 OpCode::OpPop => {
-                    self.pop();
+                    state.pop();
                 },
                 OpCode::OpDefineGlobal(index) => {
-                    let var_name = self.get_variable_name(index, frame);
-                    let var_val = self.pop();
-                    self.globals.insert(var_name, var_val);
+                    let var_name = self.get_variable_name(index, &state);
+                    let var_val = state.pop();
+                    state.globals.insert(var_name, var_val);
                 },
                 OpCode::OpGetGlobal(index) => {
-                    let var_name = self.get_variable_name(index, frame);
-                    let var_val = self.globals.get(&var_name);
+                    let var_name = self.get_variable_name(index, &state);
+                    let var_val = state.globals.get(&var_name);
                     match var_val {
                         Some(x) => {
                             let new = x.clone();
-                            self.push(new)
+                            state.push(new)
                         },
                         None => {
-                            self.runtime_error(&format!("Undefined variable '{}'", var_name)[..], frame);
+                            self.runtime_error(&format!("Undefined variable '{}'", var_name)[..], &state);
                             return InterpretResult::InterpretRuntimeError;
                         },
                     }
                 }
                 OpCode::OpSetGlobal(index) => {
-                    let var_name = self.get_variable_name(index, frame);
+                    let var_name = self.get_variable_name(index, &state);
 
                     // We don't want assignment to pop the value since this is an expression
                     // this will almost always be in a expression statement, which will pop the value
-                    let var_val = self.peek().clone();
-                    if !self.globals.contains_key(&var_name) {
-                        self.runtime_error(&format!("Undefined variable '{}'", var_name)[..], frame);
+                    let var_val = state.peek().clone();
+                    if !state.globals.contains_key(&var_name) {
+                        self.runtime_error(&format!("Undefined variable '{}'", var_name)[..], &state);
                         return InterpretResult::InterpretRuntimeError
                     } else {
-                        self.globals.insert(var_name, var_val);
+                        state.globals.insert(var_name, var_val);
                     }
                 }
-                OpCode::OpGetLocal(index) => self.push(self.stack[frame.frame_start + index].clone()),    // Note: We gotta clone these values around the stack because our operators pop off the top and we also don't want to modify the variable value
-                OpCode::OpSetLocal(index) => self.stack[frame.frame_start + index] = self.peek().clone(), // Same idea as OpSetGlobal, don't pop value since it's an expression
+                OpCode::OpGetLocal(index) => state.push(state.stack[state.frame_start() + index].clone()),    // Note: We gotta clone these values around the stack because our operators pop off the top and we also don't want to modify the variable value
+                OpCode::OpSetLocal(index) => {
+                    let dest = state.frame_start() + index;
+                    state.stack[dest] = state.peek().clone(); // Same idea as OpSetGlobal, don't pop value since it's an expression
+                },
 
-                OpCode::OpJump(offset) => frame.ip += offset,
+                OpCode::OpJump(offset) => state.jump(offset),
                 OpCode::OpJumpIfFalse(offset) => {
-                    if is_falsey(self.peek()) { // Does not pop the value off the top of the stack because we need them for logical operators
-                        frame.ip += offset;
+                    if is_falsey(state.peek()) { // Does not pop the value off the top of the stack because we need them for logical operators
+                        state.jump(offset);
                     }
                 },
-                OpCode::OpLoop(neg_offset) => frame.ip -= neg_offset,
+                OpCode::OpLoop(neg_offset) => state.jump_back(neg_offset),
 
-                OpCode::OpConstant(index) => self.push(frame.function.chunk.get_constant(index)),
-                OpCode::OpTrue            => self.push(Value::Bool(true)),
-                OpCode::OpFalse           => self.push(Value::Bool(false)),
-                OpCode::OpNil             => self.push(Value::Nil),
-                
+                OpCode::OpConstant(index) => state.push(self.get_chunk(&state).chunk.get_constant(index)),
+                OpCode::OpTrue            => state.push(Value::Bool(true)),
+                OpCode::OpFalse           => state.push(Value::Bool(false)),
+                OpCode::OpNil             => state.push(Value::Nil),
+
                 OpCode::OpAdd           => {
-                    let t = (self.pop(), self.pop());
+                    let t = (state.pop(), state.pop());
                     if let (Value::LoxString(a), Value::LoxString(b)) = t {
-                        self.push(Value::LoxString(format!("{}{}",b,a)))
+                        state.push(Value::LoxString(format!("{}{}",b,a)))
                     } else if let (Value::Double(a), Value::Double(b)) = t {
-                        self.push(Value::Double(a + b))
+                        state.push(Value::Double(a + b))
                     } else {
-                        self.runtime_error("Operands must be numbers", frame);
+                        self.runtime_error("Operands must be numbers", &state);
                         return InterpretResult::InterpretRuntimeError;
                     }
                 },
@@ -216,27 +281,27 @@ impl VM {
                 OpCode::OpGreater       => op_binary!(Value::Bool, >),
                 OpCode::OpLess          => op_binary!(Value::Bool, <),
                 OpCode::OpEqual => {
-                    let t = (self.pop(), self.pop());
-                    self.push(Value::Bool(values_equal(t)));
+                    let t = (state.pop(), state.pop());
+                    state.push(Value::Bool(values_equal(t)));
                 },
 
                 OpCode::OpNot => {
-                    let val = Value::Bool(is_falsey(&self.pop()));
-                    self.push(val);
+                    let val = Value::Bool(is_falsey(&state.pop()));
+                    state.push(val);
                 },
                 OpCode::OpNegate => {
-                    let value = self.pop().as_num(); 
+                    let value = state.pop().as_num(); 
                     match value {
-                        Some(x) => self.push(Value::Double(x * -1.0)),
+                        Some(x) => state.push(Value::Double(x * -1.0)),
                         None => {
-                            self.runtime_error("Attempted to negate a non-number value", frame);
+                            self.runtime_error("Attempted to negate a non-number value", &state);
                             return InterpretResult::InterpretRuntimeError;
                         }
                     }
                 },
 
                 OpCode::OpPrint => {
-                    println!("{}",self.pop().to_string());
+                    println!("{}",state.pop().to_string());
                 }
             }
         }

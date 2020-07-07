@@ -29,7 +29,7 @@ impl<'a> Parser<'a> {
     }
 
     fn advance(&mut self){
-        self.tokens.push(self.scanner.scan_token()); // Wastes memory by not just dropping the older tokens, but w/e this makes the borrow checker happy so it works 4 me
+        self.tokens.push(self.scanner.scan_token()); // Wastes memory by not just dropping the older tokens, make advance() drop older tokens after i finish the code?
         if self.current().token_type == TokenType::TokenError {
             self.error("Error in scanning");
             self.advance();
@@ -284,7 +284,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // Walk and look for a local variable with the same name, returns -1 to signal that this name is a global
+    // Walk and look for a local variable with the same name, None if the var is not found (treat as global)
     fn resolve_local(&mut self, name: &String) -> Option<usize> {
         let mut error = false;
         for (i, local) in self.locals.iter().enumerate() {
@@ -299,7 +299,7 @@ impl<'a> Parser<'a> {
         }
 
         if error {
-            self.error("Cannot read local variable in its own initializer");
+            self.error("Cannot read local variable in its own initializer"); // I dont think this actually works lul
         }
         return None;
     }
@@ -563,7 +563,7 @@ impl<'a> Parser<'a> {
         functions.push(FunctionChunk::new(None, 0, FunctionType::Script)); // Start the compilation with a top level function
 
         let mut locals = Vec::new();
-        locals.push(Local {             // Placeholder local variable for VM use
+        locals.push(Local {             // Placeholder local variable for VM use -> Will be filled by the top level function
             name: String::from(""),
             depth: None,
         });
@@ -579,7 +579,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // Note: is this an expensive move? Is it less expensive to just move/copy the FunctionChunks afterwards?
+    // Note: is this an expensive move (moving self into this function) ? Is it less expensive to just move/copy the FunctionChunks afterwards?
     pub fn compile(mut self) -> Option<Vec<FunctionChunk>> { 
         while !self.match_cur(TokenType::TokenEOF) {
             self.declaration();

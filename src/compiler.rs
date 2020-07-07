@@ -1,5 +1,5 @@
 use crate::scanner::{Scanner, Token, TokenType};
-use crate::chunk::{OpCode, Instr, Chunk};
+use crate::chunk::{OpCode, Instr, Chunk, FunctionChunk, FunctionType};
 use crate::value::Value;
 use crate::prec::{Precedence, ParseFn, get_rule};
 use crate::debug::disassemble_chunk;
@@ -8,7 +8,9 @@ pub struct Parser<'a> {
     scanner: Scanner<'a>,
     tokens: Vec<Token>,
 
-    chunk: &'a mut Chunk,
+    //chunk: &'a mut Chunk,
+    functions: Vec<FunctionChunk>,
+
     locals: Vec<Local>,
     scope_depth: usize,
 
@@ -17,6 +19,15 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
+
+    fn current_chunk(&mut self) -> &mut Chunk {
+        &mut self.functions.last_mut().unwrap().chunk
+    }
+
+    fn current_chunk_ref(&self) -> &Chunk {
+        &self.functions.last().unwrap().chunk
+    }
+
     fn advance(&mut self){
         self.tokens.push(self.scanner.scan_token()); // Wastes memory by not just dropping the older tokens, but w/e this makes the borrow checker happy so it works 4 me
         if self.current().token_type == TokenType::TokenError {
@@ -85,10 +96,11 @@ impl<'a> Parser<'a> {
 
     fn emit_instr(&mut self, op_code: OpCode) {
         // println!("Emitting instr {:?} from token {:?}", op_code, self.previous()); kinda useful
-        self.chunk.write_instruction(Instr {
+        let instr = Instr {
             op_code,
             line_num: self.previous().line_num
-        })
+        };
+        self.current_chunk().write_instruction(instr)
     }
 
     fn emit_instrs(&mut self, op_codes: &[OpCode]) {
@@ -98,7 +110,7 @@ impl<'a> Parser<'a> {
     }
 
     fn emit_constant(&mut self, value: Value) -> usize {
-        let index = self.chunk.add_constant(value);
+        let index = self.current_chunk().add_constant(value);
         self.emit_instr(OpCode::OpConstant(index));
         index
     }
@@ -106,23 +118,23 @@ impl<'a> Parser<'a> {
     // Emits OpCode::OpJump
     fn emit_jump(&mut self) -> usize {
         self.emit_instr(OpCode::OpJump(usize::max_value())); 
-        self.chunk.code.len() - 1
+        self.current_chunk().code.len() - 1
     }
 
     // Emits OpCode::OpJumpIfFalse
     fn emit_jif(&mut self) -> usize {
         self.emit_instr(OpCode::OpJumpIfFalse(usize::max_value())); 
-        self.chunk.code.len() - 1
+        self.current_chunk().code.len() - 1
     }
 
     // Given the index of the jump instruction in the chunk, update the opcode to jump to the instruction after the current one
     fn patch_jump(&mut self, offset: usize) {
-        let jump_amount = self.chunk.code.len() - offset - 1;
+        let jump_amount = self.current_chunk().code.len() - offset - 1;
         if jump_amount > usize::max_value() {
             self.error("Too much code to jump over.");
         }
           
-        let jump_instr = self.chunk.code.get_mut(offset).unwrap();
+        let jump_instr = self.current_chunk().code.get_mut(offset).unwrap();
         macro_rules! replace_jump {
             ($jump_type: path) => {{jump_instr.op_code = $jump_type(jump_amount)}}
         }
@@ -130,13 +142,16 @@ impl<'a> Parser<'a> {
         match jump_instr.op_code {
             OpCode::OpJump(_) => replace_jump!(OpCode::OpJump),
             OpCode::OpJumpIfFalse(_) => replace_jump!(OpCode::OpJumpIfFalse),
-            _ => self.error(&format!("Attempted to patch a non_jump op code instruction: {:?}", self.chunk.code.get(offset).unwrap())),
+            _ => {
+                let instr = self.current_chunk_ref().code.get(offset).unwrap().clone();
+                self.error(&format!("Attempted to patch a non_jump op code instruction: {:?}", instr));
+            },
         }
     }
 
     // loop_start: Index of the instruction to jump back to
     fn emit_loop(&mut self, loop_start: usize) {
-        let loop_op = OpCode::OpLoop(self.chunk.code.len() - loop_start);
+        let loop_op = OpCode::OpLoop(self.current_chunk().code.len() - loop_start);
         self.emit_instr(loop_op);
     }
 
@@ -292,7 +307,7 @@ impl<'a> Parser<'a> {
     // Given a token, add the string lexemme to the chunk as a constant and return the index
     // Only used for global variables
     fn identifier_constant(&mut self, str_val: &String) -> usize {
-        self.chunk.add_constant(Value::LoxString(str_val.to_string()))
+        self.current_chunk().add_constant(Value::LoxString(str_val.to_string()))
     }
 
     // Emits the instruction to define the global variable
@@ -350,7 +365,7 @@ impl<'a> Parser<'a> {
     }
 
     fn while_statement(&mut self) {
-        let loop_start = self.chunk.code.len() - 1;
+        let loop_start = self.current_chunk().code.len() - 1;
         
         self.consume(TokenType::TokenLeftParen, "Expected '(' after 'while'");
         self.expression();
@@ -380,7 +395,7 @@ impl<'a> Parser<'a> {
             self.expression_statement(); //
         }
 
-        let mut loop_start = self.chunk.code.len() - 1; // Loop should include 2nd and 3rd clauses (if they exist)
+        let mut loop_start = self.current_chunk().code.len() - 1; // Loop should include 2nd and 3rd clauses (if they exist)
         let mut exit_jump = None;
 
         // Loop conditional
@@ -395,7 +410,7 @@ impl<'a> Parser<'a> {
             // Jump to body, set this point to be the one to loop back to after executing the body, jump to next iteration
             let body_jump = self.emit_jump(); // Jump to after the increment and the loop
 
-            let increment_start = self.chunk.code.len() - 1;
+            let increment_start = self.current_chunk().code.len() - 1;
             self.expression(); // Parse the increment expression
             self.emit_instr(OpCode::OpPop); // Pop the remaining value
             self.consume(TokenType::TokenRightParen, "Expected ')' after for loop clauses");
@@ -538,29 +553,44 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn new(code: &'a String, chunk: &'a mut Chunk) -> Parser<'a> {
+    pub fn new(code: &'a String) -> Parser<'a> {
         let mut scanner = Scanner::init_scanner(code);
+
         let mut tokens = Vec::new();
-        tokens.push(scanner.scan_token());
+        tokens.push(scanner.scan_token()); // Load up the first token
+
+        let mut functions = Vec::new();
+        functions.push(FunctionChunk::new(None, 0, FunctionType::Script)); // Start the compilation with a top level function
+
+        let mut locals = Vec::new();
+        locals.push(Local {             // Placeholder local variable for VM use
+            name: String::from(""),
+            depth: None,
+        });
+
         Parser {
             scanner,
             tokens,
-            locals: Vec::new(), 
+            locals, 
             scope_depth: 0,
-            chunk,
+            functions,
             had_error: false,
             panic_mode: false,
         }
     }
 
-    // looks like the book will have multiple bytecode chunks being produced, so we're gonna have to switch to some vectors eventually
-    pub fn compile(&mut self) -> bool { 
+    // Note: is this an expensive move? Is it less expensive to just move/copy the FunctionChunks afterwards?
+    pub fn compile(mut self) -> Option<Vec<FunctionChunk>> { 
         while !self.match_cur(TokenType::TokenEOF) {
             self.declaration();
         }
         self.end_compilation();
-        disassemble_chunk(self.chunk, "test");
-        return !self.had_error
+
+        for fn_chunk in self.functions.iter() {
+            disassemble_chunk(&fn_chunk.chunk, &fn_chunk.name.as_ref().unwrap_or(&String::from("<script>")));
+        }
+
+        if !self.had_error { Some(self.functions) } else { None }
     }
 
     fn is_global(&self) -> bool {

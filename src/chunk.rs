@@ -35,12 +35,13 @@ pub enum OpCode {
     OpPrint,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Instr {
     pub op_code: OpCode,
     pub line_num: usize
 }
 
+#[derive(Debug)]
 pub struct Chunk {
     pub code: Vec<Instr>,
     pub constants: Vec<Value>
@@ -70,4 +71,29 @@ impl Chunk {
             constants: Vec::new()
         }
     }
+}
+
+#[derive(Debug)]
+pub struct FunctionChunk {
+    pub chunk: Chunk,
+    pub name: Option<String>,
+    pub arity: usize,
+    pub fn_type: FunctionType,
+}
+
+impl FunctionChunk {
+    pub fn new(name: Option<String>, arity: usize, fn_type: FunctionType) -> FunctionChunk {
+        FunctionChunk {
+            chunk: Chunk::new(),
+            name,
+            arity,
+            fn_type,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FunctionType {
+    Function,
+    Script
 }

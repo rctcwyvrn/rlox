@@ -4,6 +4,7 @@ pub enum Value {
     Bool(bool),
     Nil,
     LoxString(String), 
+    LoxFunction(String), // Function name -> Use a lookup table at runtime if the user wants to use functions as first order objects
 }
 
 impl Value {
@@ -14,6 +15,7 @@ impl Value {
             Value::Bool(x) => format!("{}",x),
             Value::LoxString(x) => format!("{}",x),
             Value::Nil => String::from("Nil"),
+            Value::LoxFunction(x) => format!("<fn {}>",x),
         }
     }
 

@@ -59,14 +59,14 @@ fn run_file(filename: &String) -> InterpretResult {
 }
 
 fn interpret(source: &String) -> InterpretResult {
-    let mut chunk = Chunk::init_chunk();
-    let mut parser = Parser::init_parser(source, &mut chunk);
+    let mut chunk = Chunk::new();
+    let mut parser = Parser::new(source);
     let result = parser.compile();
-    if !result {
+    if let None = result {
         return InterpretResult::InterpretCompileError;
     }
 
     //let vm = VM::init_vm(ExecutionMode::Trace, &chunk);
-    let vm = VM::init_vm(ExecutionMode::Default, &chunk);
+    let vm = VM::init_vm(ExecutionMode::Default, result.unwrap().first().unwrap());
     vm.run()
 }

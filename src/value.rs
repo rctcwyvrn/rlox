@@ -1,4 +1,5 @@
 use crate::vm::VM;
+use crate::native::NativeFn;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -7,6 +8,7 @@ pub enum Value {
     Nil,
     LoxString(String), 
     LoxFunction(usize), // Index of the function in the functions Vec in VM
+    NativeFunction(NativeFn),
 }
 
 impl Value {
@@ -18,6 +20,7 @@ impl Value {
             Value::LoxString(x) => format!("{}",x),
             Value::Nil => String::from("Nil"),
             Value::LoxFunction(x) => format!("<fn {}>", vm.functions.get(*x).unwrap().name.as_ref().unwrap()),
+            Value::NativeFunction(x) => format!("<native_fn {:?}>", x),
         }
     }
 

@@ -5,6 +5,7 @@ mod vm;
 mod compiler;
 mod scanner;
 mod prec;
+mod native;
 
 use crate::vm::{VM, ExecutionMode, InterpretResult};
 use crate::compiler::{Parser, DEBUG};
@@ -22,7 +23,7 @@ fn main() {
         repl();
     } else if args.len() == 2 {
         let result = run_file(args.get(1).unwrap());
-        println!("> {:?}", result);
+        eprintln!("> {:?}", result);
     } else {
         println!("Usage: rlox [path]");
     }

@@ -1,6 +1,7 @@
 use crate::chunk::{OpCode, Instr, FunctionChunk};
 use crate::debug::*;
 use crate::value::{Value, is_falsey, values_equal};
+use crate::native::*;
 
 use std::collections::HashMap;
 
@@ -19,6 +20,7 @@ pub enum ExecutionMode {
     Trace
 }
 
+// Is it good rust to split these into two very coupled but seperate structs or is there a way to keep them together while not angering the borrow checker?
 // Mutable VM state: stack, frames, ip within the frames, globals <-- this struct should be built in run and mutated in there
 // Immutable VM values: mode, function chunks (code + constants) <-- this struct should be passed from the compiler as an immutable reference
 
@@ -86,7 +88,7 @@ impl VMState {
         self.frame_mut().ip -= neg_offset;
     }
 
-    /// Checks if the targetted Value is a LoxFunction, passes it to call() if to add the CallFrame if so
+    /// Checks if the targetted Value is a LoxFunction, passes it to call() to continue attempting the call
     /// 
     /// Returns a String containing an error message or None
     fn call_value(&mut self, arg_count: usize, function_defs: &Vec<FunctionChunk>) -> Option<String> {
@@ -94,6 +96,10 @@ impl VMState {
         if let Value::LoxFunction(fn_index) = callee {
             let fn_index = *fn_index; // Borrow checker dance
             self.call(fn_index, arg_count, function_defs)
+        } else if let Value::NativeFunction(native_fn) = callee {
+            let native_fn = native_fn.clone();
+            self.call_native(&native_fn, arg_count);
+            None
         } else {
             Some(String::from("Can only call functions and classses"))
         }
@@ -119,6 +125,29 @@ impl VMState {
         return None;
     }
 
+    /// Attempts to call a native (rust) function
+    fn call_native(&mut self, native_fn: &NativeFn, arg_count: usize) {
+        let mut args: Vec<Value> = Vec::new();
+        for _ in 0..arg_count {
+            println!("popping! {:?}", self.stack);
+            args.push(self.pop());
+        }
+        let result = native_fn(arg_count, args);
+        self.push(result);
+    }
+
+    fn define_native(&mut self, name: String, native_fn: NativeFn) {
+        self.push(Value::LoxString(name.clone()));           // For garbage collection later?
+        self.push(Value::NativeFunction(native_fn)); // ^
+        self.globals.insert(name, Value::NativeFunction(native_fn));
+        self.pop();
+        self.pop();
+    }
+
+    fn define_std_lib(&mut self) {
+        self.define_native(String::from("test_native"), test_native);
+    }
+
     fn debug_trace(&self) {
         println!("> Stack: ");
         for value in &self.stack {
@@ -133,8 +162,8 @@ impl VMState {
     /// Initializes the VMState with:
     /// 
     /// - A CallFrame for function #0
-    /// 
-    /// - A Value::LoxFunction for function #0
+    /// - Defined global variables for the native functions
+    /// - A Value::LoxFunction for function #0 pushed onto the stack
     fn new() -> VMState {
         let first_fn = CallFrame {
             function: 0,
@@ -149,11 +178,14 @@ impl VMState {
         let mut stack = Vec::new();
         stack.push(first_val);
 
-        VMState {
+        let mut state = VMState {
             stack,
             frames,
-            globals:  HashMap::new(),
-        }
+            globals: HashMap::new(),
+        };
+
+        state.define_std_lib();
+        return state;
     }
 }
 

@@ -14,13 +14,14 @@ pub enum TokenType {
     TokenTrue, TokenVar, TokenWhile, TokenError, TokenEOF,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Token {
     pub token_type: TokenType,
     pub line_num: usize,
-    pub lexemme: String // rust gets mad at me if i try to make this a reference to the original String back in main, so we need to copy each lexemme out, which kinda sucks
+    pub lexemme: String, // rust gets mad at me if i try to make this a reference to the original String back in main, so we need to copy each lexemme out, which kinda sucks
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct Scanner<'a> { // I don't understand lifetimes or what this does, but it makes the compiller happy so that's good enough for now :P
     code: &'a str,
     cur_line: usize,
@@ -162,7 +163,7 @@ impl Scanner<'_> {
                     match self.code.as_bytes()[self.start_pos + 1] {
                         b'a' => self.check_for_keyword(2, 3, "lse", TokenType::TokenFalse),
                         b'o' => self.check_for_keyword(2, 1, "r", TokenType::TokenFor),
-                        b'u' => self.check_for_keyword(2, 1, "m", TokenType::TokenFun),
+                        b'u' => self.check_for_keyword(2, 1, "n", TokenType::TokenFun),
                         _ => TokenType::TokenIdentifier,
                     }
                 } else {

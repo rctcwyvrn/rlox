@@ -7,8 +7,7 @@ mod scanner;
 mod prec;
 
 use crate::vm::{VM, ExecutionMode, InterpretResult};
-use crate::chunk::{Chunk};
-use crate::compiler::Parser;
+use crate::compiler::{Parser, DEBUG};
 
 use std::env;
 use std::io;
@@ -65,7 +64,6 @@ fn interpret(source: &String) -> InterpretResult {
         return InterpretResult::InterpretCompileError;
     }
 
-    //let vm = VM::new(ExecutionMode::Trace, result.unwrap());
-    let vm = VM::new(ExecutionMode::Default, result.unwrap());
+    let vm = if DEBUG { VM::new(ExecutionMode::Trace, result.unwrap()) } else { VM::new(ExecutionMode::Default, result.unwrap()) };
     vm.run()
 }

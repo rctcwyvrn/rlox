@@ -1,8 +1,10 @@
-use crate::chunk::{Chunk, OpCode, Instr, FunctionChunk};
+use crate::chunk::{OpCode, Instr, FunctionChunk};
 use crate::debug::*;
 use crate::value::{Value, is_falsey, values_equal};
 
 use std::collections::HashMap;
+
+const FRAMES_MAX: usize = 64;
 
 #[derive(Debug, PartialEq)]
 pub enum InterpretResult {
@@ -49,6 +51,10 @@ impl VMState {
         self.stack.last().unwrap()
     }
 
+    fn peek_at(&self, dist: usize) -> &Value {
+        self.stack.get(self.stack.len() - dist - 1).unwrap()
+    }
+
     fn frame(&self) -> &CallFrame {
         match self.frames.last() {
             Some(x) => x,
@@ -63,7 +69,7 @@ impl VMState {
         }
     }
 
-    // Returns the index into the stack where the current call frame's relative stack starts
+    /// Returns the index into the stack where the current call frame's relative stack starts
     fn frame_start(&self) -> usize {
         self.frame().frame_start
     }
@@ -80,6 +86,39 @@ impl VMState {
         self.frame_mut().ip -= neg_offset;
     }
 
+    /// Checks if the targetted Value is a LoxFunction, passes it to call() if to add the CallFrame if so
+    /// 
+    /// Returns a String containing an error message or None
+    fn call_value(&mut self, arg_count: usize, function_defs: &Vec<FunctionChunk>) -> Option<String> {
+        let callee = self.peek_at(arg_count);
+        if let Value::LoxFunction(fn_index) = callee {
+            let fn_index = *fn_index; // Borrow checker dance
+            self.call(fn_index, arg_count, function_defs)
+        } else {
+            Some(String::from("Can only call functions and classses"))
+        }
+    }
+
+    /// Attempts to call a function with the values on the stack, with the given # of arguments
+    fn call(&mut self, fn_index: usize, arg_count: usize, function_defs: &Vec<FunctionChunk>) -> Option<String> {
+        let target_fn = function_defs.get(fn_index).unwrap();
+        if arg_count != target_fn.arity {
+            return Some(format!("Expected {} arguments but got {} instead", target_fn.arity, arg_count));
+        }
+
+        if self.frames.len() == FRAMES_MAX {
+            return Some(String::from("Stack overflow"));
+        }
+
+        let frame = CallFrame {
+            function: fn_index,
+            ip: 0,
+            frame_start: self.stack.len() - arg_count - 1
+        };
+        self.frames.push(frame);
+        return None;
+    }
+
     fn debug_trace(&self) {
         println!("> Stack: ");
         for value in &self.stack {
@@ -91,6 +130,11 @@ impl VMState {
         }
     }
 
+    /// Initializes the VMState with:
+    /// 
+    /// - A CallFrame for function #0
+    /// 
+    /// - A Value::LoxFunction for function #0
     fn new() -> VMState {
         let first_fn = CallFrame {
             function: 0,
@@ -104,6 +148,7 @@ impl VMState {
         let first_val = Value::LoxFunction(0);
         let mut stack = Vec::new();
         stack.push(first_val);
+
         VMState {
             stack,
             frames,
@@ -114,7 +159,7 @@ impl VMState {
 
 pub struct VM {
     mode: ExecutionMode,
-    functions: Vec<FunctionChunk>,
+    pub functions: Vec<FunctionChunk>, // Stores all function definitions
 }
 
 impl VM {
@@ -141,6 +186,12 @@ impl VM {
         println!("---");
         println!("> Constants");
         for fn_chunk in self.functions.iter(){
+            let name = if let Some(fn_name) = &fn_chunk.name {
+                fn_name.clone()
+            } else {
+                String::from("script")
+            };
+            println!(">>> {}", name);
             for val in fn_chunk.chunk.constants.iter() {
                 println!(">> [ {:?} ]", val);
             }
@@ -149,14 +200,21 @@ impl VM {
     }
 
     fn runtime_error(&self, msg: &str, state: &VMState) {
-        let instr = state.frame().ip - 1;
-        let line = self.get_chunk(state).chunk.code.get(instr).unwrap().line_num;
         eprintln!("{}", msg);
-        eprintln!("\t[line {}] in script\n", line);
+        //eprintln!("\t[line {}] in script\n", line);
+
+        for call_frame in state.frames.iter().rev() {
+            let function = self.functions.get(call_frame.function).unwrap();
+            eprint!("[line {}] in ", function.chunk.code.get(call_frame.ip).unwrap().line_num);
+            match &function.name {
+                Some(name) => eprintln!("{}", name),
+                None => eprintln!("script"),
+            }
+        }
     }
 
     fn get_variable_name(&self, index: usize, state: &VMState) -> String {
-        let name_val = self.get_chunk(state).chunk.get_constant(index);
+        let name_val = self.get_chunk(state).chunk.get_constant(index); // FIXME: should each FunctionChunk have a constants field or should it be shared? Does this work for globals? (I think it does because each identifier makes a new LoxString on the relevant chunk's constants vec)
         if let Value::LoxString(var_name) = name_val {
             return var_name;
         } else {
@@ -173,8 +231,8 @@ impl VM {
 
     pub fn run(&self) -> InterpretResult {
         if let ExecutionMode::Trace = self.mode {
-            self.debug_print_constants();
             println!("== Starting execution | Mode: {:?} ==", self.mode);
+            self.debug_print_constants();
         }
 
         let mut state = VMState::new();
@@ -209,7 +267,19 @@ impl VM {
             }
 
             match instr.op_code {
-                OpCode::OpReturn => { return InterpretResult::InterpretOK }, // soon
+                OpCode::OpReturn => {
+                        let result = state.pop(); // Save the result (the value on the top of the stack)
+                        for _ in 0..(state.stack.len() - state.frame().frame_start) { // Clean up the call frame part of that stack
+                            state.pop();
+                        }
+
+                        state.frames.pop();
+                        if state.frames.is_empty() {
+                            return InterpretResult::InterpretOK;
+                        } else {
+                            state.push(result); // Push the result back
+                        }
+                    },
                 OpCode::OpPop => {
                     state.pop();
                 },
@@ -259,7 +329,15 @@ impl VM {
                 },
                 OpCode::OpLoop(neg_offset) => state.jump_back(neg_offset),
 
-                OpCode::OpConstant(index) => state.push(self.get_chunk(&state).chunk.get_constant(index)),
+                OpCode::OpCall(arity) => {
+                    let result = state.call_value(arity, &self.functions);
+                    if let Some(msg) = result { 
+                        self.runtime_error(&msg[..], &state);
+                        return InterpretResult::InterpretRuntimeError; 
+                    }
+                },
+
+                OpCode::OpConstant(index) => state.push(self.get_chunk(&state).chunk.get_constant(index)), // FIXME
                 OpCode::OpTrue            => state.push(Value::Bool(true)),
                 OpCode::OpFalse           => state.push(Value::Bool(false)),
                 OpCode::OpNil             => state.push(Value::Nil),
@@ -301,7 +379,7 @@ impl VM {
                 },
 
                 OpCode::OpPrint => {
-                    println!("{}",state.pop().to_string());
+                    println!("{}",state.pop().to_string(&self));
                 }
             }
         }

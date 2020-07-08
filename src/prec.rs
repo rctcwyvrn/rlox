@@ -29,6 +29,7 @@ pub enum ParseFn {
     Variable,
     And,
     Or,
+    Call,
 }
 
 pub struct ParseRule {
@@ -63,8 +64,8 @@ const PARSE_RULE_NONE: ParseRule = ParseRule {
 
 const PARSE_RULE_LP: ParseRule = ParseRule {
     prefix: ParseFn::Grouping,
-    infix: ParseFn::None,
-    precedence: Precedence::PrecNone
+    infix: ParseFn::Call,
+    precedence: Precedence::PrecCall
 };
 
 const PARSE_RULE_MINUS: ParseRule = ParseRule {

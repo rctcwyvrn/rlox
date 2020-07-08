@@ -4,12 +4,15 @@ use crate::value::Value;
 use crate::prec::{Precedence, ParseFn, get_rule};
 use crate::debug::disassemble_chunk;
 
+pub const DEBUG: bool = false;
+
 pub struct Parser<'a> {
     scanner: Scanner<'a>,
     tokens: Vec<Token>,
 
-    //chunk: &'a mut Chunk,
     functions: Vec<FunctionChunk>,
+    function_type: FunctionType,
+    function_depth: usize, // # of child parsers we're in, had to be added for functions defined in other functions
 
     locals: Vec<Local>,
     scope_depth: usize,
@@ -19,13 +22,12 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-
     fn current_chunk(&mut self) -> &mut Chunk {
-        &mut self.functions.last_mut().unwrap().chunk
+        &mut self.functions.first_mut().unwrap().chunk
     }
 
     fn current_chunk_ref(&self) -> &Chunk {
-        &self.functions.last().unwrap().chunk
+        &self.functions.first().unwrap().chunk
     }
 
     fn advance(&mut self){
@@ -34,6 +36,7 @@ impl<'a> Parser<'a> {
             self.error("Error in scanning");
             self.advance();
         }
+        //println!("depth = {} | prev {:?} | cur {:?}", self.function_depth, self.previous(), self.current());
     }
 
     fn previous(&self) -> &Token {
@@ -115,19 +118,23 @@ impl<'a> Parser<'a> {
         index
     }
 
-    // Emits OpCode::OpJump
+    fn emit_return(&mut self) {
+        self.emit_instrs(&[OpCode::OpNil, OpCode::OpReturn]);
+    }
+
+    /// Emits OpCode::OpJump
     fn emit_jump(&mut self) -> usize {
         self.emit_instr(OpCode::OpJump(usize::max_value())); 
         self.current_chunk().code.len() - 1
     }
 
-    // Emits OpCode::OpJumpIfFalse
+    /// Emits OpCode::OpJumpIfFalse
     fn emit_jif(&mut self) -> usize {
         self.emit_instr(OpCode::OpJumpIfFalse(usize::max_value())); 
         self.current_chunk().code.len() - 1
     }
 
-    // Given the index of the jump instruction in the chunk, update the opcode to jump to the instruction after the current one
+    /// Given the index of the jump instruction in the chunk, update the opcode to jump to the instruction after the current one
     fn patch_jump(&mut self, offset: usize) {
         let jump_amount = self.current_chunk().code.len() - offset - 1;
         if jump_amount > usize::max_value() {
@@ -149,7 +156,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // loop_start: Index of the instruction to jump back to
+    /// loop_start: Index of the instruction to jump back to
     fn emit_loop(&mut self, loop_start: usize) {
         let loop_op = OpCode::OpLoop(self.current_chunk().code.len() - loop_start);
         self.emit_instr(loop_op);
@@ -159,7 +166,7 @@ impl<'a> Parser<'a> {
         self.scope_depth+=1;
     }
 
-    // Decrements the scope depth and pops off the values that went out of scope
+    /// Decrements the scope depth and pops off the values that went out of scope
     fn end_scope(&mut self) {
         self.scope_depth-=1;
         let mut pops = 0;
@@ -179,8 +186,28 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn is_global(&self) -> bool {
+        self.scope_depth == 0
+    }
+
+    fn add_local(&mut self, name: String) {
+        let local = Local {
+            name, 
+            depth: None
+        };
+        self.locals.push(local);
+    }
+
+    /// Marks the last local variable as initialized by giving it a depth
+    /// if the current scope is not global
+    fn mark_initialized(&mut self) {
+        if self.scope_depth == 0 { return }
+        self.locals.last_mut().unwrap().depth = Some(self.scope_depth);
+    }
+
+    /// Emits an OpReturn
     fn end_compilation(&mut self) {
-        self.emit_instr(OpCode::OpReturn)
+        self.emit_return();
     }
 
     fn parse_precedence(&mut self, prec: Precedence) {
@@ -219,11 +246,14 @@ impl<'a> Parser<'a> {
             ParseFn::Variable   => self.variable(can_assign),
             ParseFn::And        => self.and_operator(),
             ParseFn::Or         => self.or_operator(),
+            ParseFn::Call       => self.call(),
         }
     }
 
     fn declaration(&mut self) {
-        if self.match_cur(TokenType::TokenVar) {
+        if self.match_cur(TokenType::TokenFun) {
+            self.fun_declaration();
+        } else if self.match_cur(TokenType::TokenVar) {
             self.var_declaration();
         } else {
             self.statement();
@@ -231,10 +261,19 @@ impl<'a> Parser<'a> {
         if self.panic_mode { self.synchronize(); }
     }
 
-    // parse_variable => consumes TokenIdentifier, adds the constant name to the cosntants vec, and returns the index
-    // define_variable => takes that index, and emits the instruction to bind it to the value on the top of the the stack
+    fn fun_declaration(&mut self) {
+        let global = self.parse_variable("Expected function name");
+        self.mark_initialized(); // Initialize the function object if we are in a local scope
+        self.function(FunctionType::Function);
+        self.define_variable(global); // Emit the define instr if we are in the global scope
+    }
+
+    // Note: Since this constantly confuses me, I'm gonna keep a note here so that I don't forget how variables work in rlox
+    // Globals: The opcodes GetGlobal and SetGlobal take a LoxString from the constants vec and map it into a HashMap in the VM, no resolving/checking is done before runtime
+    // Locals: Local variables live on the stack and since they are the ONLY values that do not get popped after statements, we know that they must live at the very bottom of the stack, 
+    // and thus we can just raw index from the bottom of the stack to the index of the variable by looking at how many locals have been defined in this scope
     fn var_declaration(&mut self) {
-        let global = self.parse_variable("Expected variable name.");
+        let global = self.parse_variable("Expected variable name");
         if self.match_cur(TokenType::TokenEqual) {
             self.expression();
         } else {
@@ -244,8 +283,9 @@ impl<'a> Parser<'a> {
         self.define_variable(global);
     }
 
-    // Match the identifier token and pass it into identifier_constant to be added to the chunk if global
-    // Calls declare_variable() if local
+    /// Match the identifier token and pass it into identifier_constant to be added to the chunk if current scope is global
+    /// 
+    /// Calls declare_variable() if the current scope is local
     fn parse_variable(&mut self, error_msg: &str) -> usize {
         self.consume(TokenType::TokenIdentifier, error_msg);
         self.declare_variable();
@@ -258,8 +298,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // Declare new local variables by pushing them onto self.locals
-    // New locals are set to a special "uninitialized" state until define_variable() is called
+    /// Declare new local variables by pushing them onto self.locals
+    /// 
+    /// New locals are set to a special "uninitialized" state until define_variable() is called
+    /// 
+    /// If the scope is global, do nothing
     fn declare_variable(&mut self) {
         if !self.is_global() { // Must not be in the global scope in order to define local vars
             let str_val = self.previous().lexemme.clone();
@@ -284,7 +327,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // Walk and look for a local variable with the same name, None if the var is not found (treat as global)
+    /// Walk and look for a local variable with the same name, None if the var is not found (treat as global)
     fn resolve_local(&mut self, name: &String) -> Option<usize> {
         let mut error = false;
         for (i, local) in self.locals.iter().enumerate() {
@@ -299,19 +342,20 @@ impl<'a> Parser<'a> {
         }
 
         if error {
-            self.error("Cannot read local variable in its own initializer"); // I dont think this actually works lul
+            self.error("Cannot read local variable in its own initializer");
         }
         return None;
     }
 
-    // Given a token, add the string lexemme to the chunk as a constant and return the index
-    // Only used for global variables
+    /// Add a string to the chunk as a constant and return the index
+    /// 
+    /// Only used for global variables
     fn identifier_constant(&mut self, str_val: &String) -> usize {
         self.current_chunk().add_constant(Value::LoxString(str_val.to_string()))
     }
 
-    // Emits the instruction to define the global variable
-    // or to set the local variable as initialized
+    /// Emits the instruction to define the global variable
+    /// or to set the local variable as initialized
     fn define_variable(&mut self, global: usize) {
         if self.is_global() {
             self.emit_instr(OpCode::OpDefineGlobal(global));
@@ -323,6 +367,8 @@ impl<'a> Parser<'a> {
     fn statement(&mut self) {
         if self.match_cur(TokenType::TokenPrint) {
             self.print_statement();
+        } else if self.match_cur(TokenType::TokenReturn) {
+            self.return_statement();
         } else if self.match_cur(TokenType::TokenIf) {
             self.if_statement();
         } else if self.match_cur(TokenType::TokenWhile) {
@@ -342,6 +388,21 @@ impl<'a> Parser<'a> {
         self.expression();
         self.consume(TokenType::TokenSemicolon, "Expected ';' after value in print statement");
         self.emit_instr(OpCode::OpPrint);
+    }
+
+    fn return_statement(&mut self) {
+        if self.function_type == FunctionType::Script {
+            self.error("Cannot return from top-level code");
+        }
+
+        if self.match_cur(TokenType::TokenSemicolon) {
+            // Nil return
+            self.emit_return();
+        } else {
+            self.expression();
+            self.consume(TokenType::TokenSemicolon, "Expected ';' after return value");
+            self.emit_instr(OpCode::OpReturn);
+        }
     }
 
     fn if_statement(&mut self) {
@@ -436,8 +497,37 @@ impl<'a> Parser<'a> {
         while !self.check(TokenType::TokenRightBrace) && !self.check(TokenType::TokenEOF) {
             self.declaration();
         }
-
         self.consume(TokenType::TokenRightBrace, "Expected '}' after block"); // Fails if we hit EOF instead
+    }
+
+    /// Compiles the function into a new FunctionChunk, adds it to the current parser, adds the LoxFunction object to the constants stack, returns the OpConstant pointing to it
+    fn function(&mut self, fun_type: FunctionType) {
+        let mut function_parser = Parser::from_old(fun_type, self);
+        function_parser.begin_scope();
+
+        function_parser.consume(TokenType::TokenLeftParen, "Expected '(' after function name");
+        if !function_parser.check(TokenType::TokenRightParen) {
+            loop {
+                let mut cur_function = function_parser.functions.first_mut().unwrap();
+                cur_function.arity += 1;
+                if cur_function.arity > 255 {
+                    function_parser.error("Cannot have more than 255 parameters");
+                }
+
+                let param_constant = function_parser.parse_variable("Expected parameter name");
+                function_parser.define_variable(param_constant);
+
+                if !function_parser.match_cur(TokenType::TokenComma) { break; }
+            }
+        }
+        function_parser.consume(TokenType::TokenRightParen, "Expected ')' after function parameters");
+        
+        function_parser.consume(TokenType::TokenLeftBrace, "Expected '{' before function body");
+        function_parser.block();
+        function_parser.end_compilation();
+
+        let index = self.end_child(function_parser);
+        self.emit_constant(Value::LoxFunction(index)); // Fixme: the value at the top of the stack should be the LoxFunction value, how do I put it there? Is this correct? Does this bind local variables correctly?
     }
 
     fn expression_statement(&mut self) {
@@ -497,7 +587,7 @@ impl<'a> Parser<'a> {
         self.named_variable(name, can_assign)
     }
 
-    // parse_precedence with TokenIdentifier => variable() -> this(previous.lexemme) 
+    // Note: parse_precedence with TokenIdentifier => variable() -> named_variable(previous.lexemme) 
     // Could be a getter or a setter, so lookahead for a '='
     fn named_variable(&mut self, name: &String, can_assign: bool) {
         let local_arg = self.resolve_local(name);
@@ -553,6 +643,84 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Infix operation for function calls, assumes that the LoxFunction will be at the top of the stack when this is called, usually
+    /// via a global/local variable resolution
+    fn call(&mut self) {
+        let arg_count = self.argument_list();
+        self.emit_instr(OpCode::OpCall(arg_count))
+    }
+
+    /// Parses expressions while looking for commas inbetween and for the closing paren. Leaves the values on the stack
+    fn argument_list(&mut self) -> usize {
+        let mut arg_count = 0;
+        if !self.check(TokenType::TokenRightParen) {
+            loop {
+                self.expression();
+                if arg_count == 255 {
+                    self.error("Cannot have more than 255 arguments");
+                }
+                arg_count += 1;
+
+                if !self.match_cur(TokenType::TokenComma) { break; }
+            } 
+        }
+        self.consume(TokenType::TokenRightParen, "Expected ')' after function argument list");
+        arg_count
+    }
+
+    /// Create a child parser to parse a function def
+    /// Todo: maybe merge with Parser::new() ? There are some similarities
+    fn from_old(function_type: FunctionType, parent: &Parser<'a>) -> Parser<'a> {
+        // We know we must have just parsed the function identifier, so just grab it from there
+        let function_name = parent.previous().lexemme.clone();
+
+        let mut locals = Vec::new();
+        locals.push(Local {             // Placeholder local variable for VM use: Gets filled by the LoxFunction value
+            name: String::from(""),
+            depth: None,
+        });
+
+        let mut functions = Vec::new();
+        functions.push(FunctionChunk {
+            chunk: Chunk::new(),
+            name: Some(function_name),
+            arity: 0,
+            fn_type: function_type,
+        });
+
+        let scanner = parent.scanner.clone();
+        let mut tokens: Vec<Token> = Vec::new();
+        let last = parent.tokens.last().unwrap().clone();
+        tokens.push(last);
+
+        Parser {
+            scanner,
+            tokens,
+            functions,
+            function_type,
+            function_depth: parent.function_depth + 1, // Counter to determine how far into the functions vec we need to go
+            locals,
+            scope_depth: parent.scope_depth, // Child is responsible for calling begin and end scope
+            had_error: false,
+            panic_mode: false,
+        }
+    }
+
+    /// Finish the usage of the child parser by adding it's functions vec and scanner progress
+    /// 
+    /// Returns the index of the FunctionChunk corresponding with the newly parsed function in the functions vec
+    fn end_child(&mut self, child: Parser<'a>) -> usize {
+        self.scanner = child.scanner; // Update the scanner
+        self.tokens.push(child.previous().clone());
+        self.tokens.push(child.current().clone());
+
+        let index = self.functions.len();
+        for fun in child.functions.into_iter() {
+            self.functions.push(fun); // Update the functions
+        }
+        index + self.function_depth
+    }
+
     pub fn new(code: &'a String) -> Parser<'a> {
         let mut scanner = Scanner::init_scanner(code);
 
@@ -574,6 +742,8 @@ impl<'a> Parser<'a> {
             locals, 
             scope_depth: 0,
             functions,
+            function_type: FunctionType::Script,
+            function_depth: 0,
             had_error: false,
             panic_mode: false,
         }
@@ -586,27 +756,13 @@ impl<'a> Parser<'a> {
         }
         self.end_compilation();
 
-        for fn_chunk in self.functions.iter() {
-            disassemble_chunk(&fn_chunk.chunk, &fn_chunk.name.as_ref().unwrap_or(&String::from("<script>")));
+        if DEBUG {
+            for fn_chunk in self.functions.iter() {
+                disassemble_chunk(&fn_chunk.chunk, &fn_chunk.name.as_ref().unwrap_or(&String::from("<script>")));
+            }
         }
 
         if !self.had_error { Some(self.functions) } else { None }
-    }
-
-    fn is_global(&self) -> bool {
-        self.scope_depth == 0
-    }
-
-    fn add_local(&mut self, name: String) {
-        let local = Local {
-            name, 
-            depth: None
-        };
-        self.locals.push(local);
-    }
-
-    fn mark_initialized(&mut self) {
-        self.locals.last_mut().unwrap().depth = Some(self.scope_depth);
     }
 }
 

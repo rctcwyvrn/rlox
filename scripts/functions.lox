@@ -1,0 +1,14 @@
+fun areWeHavingItYet() {
+  print "Yes we are!";
+  fun internal() {
+      print "because i like giving myself cancer";
+  }
+  print internal;
+  return internal;
+}
+
+fun other() {
+  print "rlox please im begging";
+}
+
+print areWeHavingItYet()();

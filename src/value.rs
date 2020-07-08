@@ -1,3 +1,5 @@
+use crate::vm::VM;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Double(f64),
@@ -9,13 +11,13 @@ pub enum Value {
 
 impl Value {
     // Used for print statements, use {:?} debug formatting for trace and stack examining
-    pub fn to_string(&self) -> String {
+    pub fn to_string(&self, vm: &VM) -> String {
         match self {
             Value::Double(x) => format!("{}",x),
             Value::Bool(x) => format!("{}",x),
             Value::LoxString(x) => format!("{}",x),
             Value::Nil => String::from("Nil"),
-            Value::LoxFunction(x) => format!("<fn #{}>",x),
+            Value::LoxFunction(x) => format!("<fn {}>", vm.functions.get(*x).unwrap().name.as_ref().unwrap()),
         }
     }
 

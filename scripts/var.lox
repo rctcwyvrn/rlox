@@ -1,12 +1,15 @@
-// var breakfast = "beignets";
-// var beverage = "cafe au lait";
-// breakfast = "beignets with " + beverage;
-// print breakfast;
 {
-    var local = "yes!";
-    {
-        var scopes = 2;
-        scopes = (scopes * 3) + 4;
-        var test = scopes;
-    }
+    var breakfast = "beignets";
+    var beverage = "cafe au lait";
+    breakfast = "beignets with " + beverage;
+    print breakfast;
 }
+
+//{
+//    var local = "yes!";
+//    {
+//        var scopes = 2;
+//        scopes = (scopes * 3) + 4;
+//        var test = scopes;
+//    }
+//}

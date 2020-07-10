@@ -1,1 +1,2 @@
-test_native();
+var x = test_native(1, "test");
+print x;

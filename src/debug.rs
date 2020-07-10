@@ -1,7 +1,11 @@
 use crate::chunk::{Chunk, Instr, OpCode};
+use crate::value::Value;
 
-pub fn disassemble_chunk(chunk: &Chunk, name: &str) {
-    println!("== {} ==============", name);
+pub fn disassemble_chunk(chunk: &Chunk, name: &Option<String>) {
+    match name {
+        Some(name) => println!("== <fn {}> ==============", name),
+        None => println!("== <script> =============="),
+    }
     println!("Constants");
     for (i, val) in chunk.constants.iter().enumerate() {
         println!("{}\t{:?}", i, val);
@@ -21,10 +25,14 @@ pub fn disassemble_chunk(chunk: &Chunk, name: &str) {
 
 pub fn disassemble_instruction(instr: &Instr, chunk: &Chunk, instr_offset: usize) {
     match instr.op_code {
-        OpCode::OpConstant(index) | 
-            OpCode::OpDefineGlobal(index) | 
+        OpCode::OpConstant(index) => println!("\t{:?} => {:?}", instr.op_code, chunk.constants.get(index).unwrap()), 
+        OpCode::OpDefineGlobal(index) | 
             OpCode::OpSetGlobal(index) |
-            OpCode::OpGetGlobal(index) => println!("\t{:?} => {:?}", instr.op_code, chunk.constants.get(index).unwrap()),
+            OpCode::OpGetGlobal(index) => {
+                if let Value::LoxString(name) = chunk.constants.get(index).unwrap() {
+                    println!("\t{:?} => name: {:?}", instr.op_code, name)
+                }
+            },
         OpCode::OpJump(jump_offset) |
             OpCode::OpJumpIfFalse(jump_offset) => println!("\t{:?} | jump -> {}", instr.op_code, instr_offset + jump_offset + 1),
         OpCode::OpLoop(neg_offset) => println!("\t{:?} | loop back -> {}", instr.op_code, instr_offset - neg_offset + 1),

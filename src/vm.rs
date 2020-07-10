@@ -1,6 +1,6 @@
 use crate::chunk::{OpCode, Instr, FunctionChunk};
 use crate::debug::*;
-use crate::value::{Value, is_falsey, values_equal};
+use crate::value::{Value, ObjClosure, is_falsey, values_equal};
 use crate::native::*;
 
 use std::collections::HashMap;
@@ -88,14 +88,17 @@ impl VMState {
         self.frame_mut().ip -= neg_offset;
     }
 
-    /// Checks if the targetted Value is a LoxFunction, passes it to call() to continue attempting the call
+    /// Checks if the targetted Value is a LoxFunction, passes it to call() to continue attempting the call.
+    /// Calls call_native() if the Value is a NativeFunction
     /// 
     /// Returns a String containing an error message or None
     fn call_value(&mut self, arg_count: usize, function_defs: &Vec<FunctionChunk>) -> Option<String> {
         let callee = self.peek_at(arg_count);
-        if let Value::LoxFunction(fn_index) = callee {
-            let fn_index = *fn_index; // Borrow checker dance
+        if let Value::LoxClosure(closure) = callee {
+            let fn_index = closure.function;
             self.call(fn_index, arg_count, function_defs)
+        } else if let Value::LoxFunction(_fn_index) =  callee {
+            panic!("VM panic! Tried to call a LoxFunction that was not wrapped in a LoxClosure?");
         } else if let Value::NativeFunction(native_fn) = callee {
             let native_fn = native_fn.clone();
             self.call_native(&native_fn, arg_count);
@@ -129,9 +132,9 @@ impl VMState {
     fn call_native(&mut self, native_fn: &NativeFn, arg_count: usize) {
         let mut args: Vec<Value> = Vec::new();
         for _ in 0..arg_count {
-            println!("popping! {:?}", self.stack);
             args.push(self.pop());
         }
+        self.pop(); // Pop off the Value::NativeFunction
         let result = native_fn(arg_count, args);
         self.push(result);
     }
@@ -233,8 +236,6 @@ impl VM {
 
     fn runtime_error(&self, msg: &str, state: &VMState) {
         eprintln!("{}", msg);
-        //eprintln!("\t[line {}] in script\n", line);
-
         for call_frame in state.frames.iter().rev() {
             let function = self.functions.get(call_frame.function).unwrap();
             eprint!("[line {}] in ", function.chunk.code.get(call_frame.ip).unwrap().line_num);
@@ -361,6 +362,15 @@ impl VM {
                 },
                 OpCode::OpLoop(neg_offset) => state.jump_back(neg_offset),
 
+                OpCode::OpClosure => {
+                    if let Value::LoxFunction(function) = state.pop() {
+                        let closure = ObjClosure::new(function, 6969);
+                        state.push(Value::LoxClosure(closure));
+                    } else {
+                        panic!("VM panic! Attempted to wrap a non-function value in a closure");
+                    }
+                },
+
                 OpCode::OpCall(arity) => {
                     let result = state.call_value(arity, &self.functions);
                     if let Some(msg) = result { 
@@ -412,6 +422,10 @@ impl VM {
 
                 OpCode::OpPrint => {
                     println!("{}",state.pop().to_string(&self));
+                }
+
+                _ => {
+                    println!("skipping for now {:?}", instr.op_code);
                 }
             }
         }

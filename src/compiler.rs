@@ -3,6 +3,7 @@ use crate::chunk::{OpCode, Instr, Chunk, FunctionChunk, FunctionType};
 use crate::value::Value;
 use crate::prec::{Precedence, ParseFn, get_rule};
 use crate::debug::disassemble_chunk;
+use crate::resolver::Resolver;
 
 pub const DEBUG: bool = false;
 
@@ -14,8 +15,7 @@ pub struct Parser<'a> {
     function_type: FunctionType,
     function_depth: usize, // # of child parsers we're in, had to be added for functions defined in other functions
 
-    locals: Vec<Local>,
-    scope_depth: usize,
+    resolver: Resolver, // Manages the slots for the local variables and upvalues
 
     had_error: bool,
     panic_mode: bool,
@@ -162,52 +162,25 @@ impl<'a> Parser<'a> {
         self.emit_instr(loop_op);
     }
 
-    fn begin_scope(&mut self) {
-        self.scope_depth+=1;
-    }
-
-    /// Decrements the scope depth and pops off the values that went out of scope
-    fn end_scope(&mut self) {
-        self.scope_depth-=1;
-        let mut pops = 0;
-        for local in self.locals.iter().rev() {
-            if let Some(x) = local.depth {
-                if x > self.scope_depth {
-                    pops+=1;
-                } else {
-                    break;
-                }
-            }
-        }
-
-        for _ in 0..pops {
-            self.emit_instr(OpCode::OpPop); // Remove old local variables
-            self.locals.pop();
-        }
-    }
-
-    fn is_global(&self) -> bool {
-        self.scope_depth == 0
-    }
-
-    fn add_local(&mut self, name: String) {
-        let local = Local {
-            name, 
-            depth: None
-        };
-        self.locals.push(local);
-    }
-
-    /// Marks the last local variable as initialized by giving it a depth
-    /// if the current scope is not global
-    fn mark_initialized(&mut self) {
-        if self.scope_depth == 0 { return }
-        self.locals.last_mut().unwrap().depth = Some(self.scope_depth);
-    }
-
     /// Emits an OpReturn
     fn end_compilation(&mut self) {
         self.emit_return();
+    }
+
+    /// End scope by emitting pop instructions and cleaning the resolver
+    fn end_scope(&mut self) {
+        for _ in 0..self.resolver.end_scope() {
+            self.emit_instr(OpCode::OpPop); // Remove old local variables
+        }
+    }
+
+    /// Calls Resolver::declare_variable() with the previous Token's lexemme (TokenIdentifier) 
+    fn declare_variable(&mut self) {
+        let str_val = self.previous().lexemme.clone();
+        let success = self.resolver.declare_variable(str_val);
+        if !success {
+            self.error("Variable with this name already declared in this scope"); 
+        }
     }
 
     fn parse_precedence(&mut self, prec: Precedence) {
@@ -263,7 +236,7 @@ impl<'a> Parser<'a> {
 
     fn fun_declaration(&mut self) {
         let global = self.parse_variable("Expected function name");
-        self.mark_initialized(); // Initialize the function object if we are in a local scope
+        self.resolver.mark_initialized(); // Initialize the function object if we are in a local scope
         self.function(FunctionType::Function);
         self.define_variable(global); // Emit the define instr if we are in the global scope
     }
@@ -290,61 +263,12 @@ impl<'a> Parser<'a> {
         self.consume(TokenType::TokenIdentifier, error_msg);
         self.declare_variable();
 
-        if self.is_global() {
+        if self.resolver.is_global() {
             let str_val = self.previous().lexemme.clone();
             self.identifier_constant(&str_val)
         } else {
             0
         }
-    }
-
-    /// Declare new local variables by pushing them onto self.locals
-    /// 
-    /// New locals are set to a special "uninitialized" state until define_variable() is called
-    /// 
-    /// If the scope is global, do nothing
-    fn declare_variable(&mut self) {
-        if !self.is_global() { // Must not be in the global scope in order to define local vars
-            let str_val = self.previous().lexemme.clone();
-            let mut found_eq = false; // Is this the idiomatic way of doing this?? I have no idea
-
-            for local in self.locals.iter() {
-                if let Some(x) = local.depth {
-                    if x < self.scope_depth {
-                        break;
-                    }
-                }
-                if str_val.eq(&local.name) {
-                    found_eq = true;
-                    break;
-                }
-            }
-
-            if found_eq {
-                self.error("Variable with this name already declared in this scope"); // Note: Can't just put this in the loop because it mutably borrows self
-            }
-            self.add_local(str_val);
-        }
-    }
-
-    /// Walk and look for a local variable with the same name, None if the var is not found (treat as global)
-    fn resolve_local(&mut self, name: &String) -> Option<usize> {
-        let mut error = false;
-        for (i, local) in self.locals.iter().enumerate() {
-            if local.name.eq(name){
-                if local.depth == None  {
-                    error = true;
-                    break;
-                } else {
-                    return Some(i);
-                }
-            }
-        }
-
-        if error {
-            self.error("Cannot read local variable in its own initializer");
-        }
-        return None;
     }
 
     /// Add a string to the chunk as a constant and return the index
@@ -357,10 +281,10 @@ impl<'a> Parser<'a> {
     /// Emits the instruction to define the global variable
     /// or to set the local variable as initialized
     fn define_variable(&mut self, global: usize) {
-        if self.is_global() {
+        if self.resolver.is_global() {
             self.emit_instr(OpCode::OpDefineGlobal(global));
         } else {
-            self.mark_initialized();
+            self.resolver.mark_initialized();
         }
     }
 
@@ -376,7 +300,7 @@ impl<'a> Parser<'a> {
         } else if self.match_cur(TokenType::TokenFor) {
             self.for_statement();
         } else if self.match_cur(TokenType::TokenLeftBrace) {
-            self.begin_scope();
+            self.resolver.begin_scope();
             self.block();
             self.end_scope();
         } else {
@@ -445,7 +369,7 @@ impl<'a> Parser<'a> {
     fn for_statement(&mut self) {
         self.consume(TokenType::TokenLeftParen, "Expected '(' after 'for'");
         
-        self.begin_scope();
+        self.resolver.begin_scope();
 
         // First clause: Can be var declaration or expresion
         if self.match_cur(TokenType::TokenSemicolon) {
@@ -503,7 +427,7 @@ impl<'a> Parser<'a> {
     /// Compiles the function into a new FunctionChunk, adds it to the current parser, adds the LoxFunction object to the constants stack, returns the OpConstant pointing to it
     fn function(&mut self, fun_type: FunctionType) {
         let mut function_parser = Parser::from_old(fun_type, self);
-        function_parser.begin_scope();
+        function_parser.resolver.begin_scope();
 
         function_parser.consume(TokenType::TokenLeftParen, "Expected '(' after function name");
         if !function_parser.check(TokenType::TokenRightParen) {
@@ -527,7 +451,8 @@ impl<'a> Parser<'a> {
         function_parser.end_compilation();
 
         let index = self.end_child(function_parser);
-        self.emit_constant(Value::LoxFunction(index)); // Fixme: the value at the top of the stack should be the LoxFunction value, how do I put it there? Is this correct? Does this bind local variables correctly?
+        self.emit_constant(Value::LoxFunction(index));
+        self.emit_instr(OpCode::OpClosure);
     }
 
     fn expression_statement(&mut self) {
@@ -590,14 +515,27 @@ impl<'a> Parser<'a> {
     // Note: parse_precedence with TokenIdentifier => variable() -> named_variable(previous.lexemme) 
     // Could be a getter or a setter, so lookahead for a '='
     fn named_variable(&mut self, name: &String, can_assign: bool) {
-        let local_arg = self.resolve_local(name);
+        let local_arg = match self.resolver.resolve_local(name) {
+            Ok(opt) => opt,
+            Err(_) => { 
+                self.error("Cannot read local variable in its own initializer"); 
+                return; 
+            },
+        };
+
+        // Figure out which type of get/set OpCodes we want
         let (get_op, set_op) = if let Some(local_index) = local_arg  {
             (OpCode::OpGetLocal(local_index), OpCode::OpSetLocal(local_index))
+
+        } else if let Some(upvalue_index) = self.resolver.resolve_upvalue(name, self.function_depth) {
+            (OpCode::OpGetUpvalue(upvalue_index), OpCode::OpSetUpvalue(upvalue_index))
+
         } else {
             let global_arg = self.identifier_constant(name); // Does NOT check at compile time if this variable can be resolved
             (OpCode::OpGetGlobal(global_arg), OpCode::OpSetGlobal(global_arg))
         };
 
+        // Figure out if we want to use the get or the set from the pair of possible ops we determined earlier
         if self.match_cur(TokenType::TokenEqual) && can_assign {
             self.expression();
             self.emit_instr(set_op);
@@ -674,19 +612,8 @@ impl<'a> Parser<'a> {
         // We know we must have just parsed the function identifier, so just grab it from there
         let function_name = parent.previous().lexemme.clone();
 
-        let mut locals = Vec::new();
-        locals.push(Local {             // Placeholder local variable for VM use: Gets filled by the LoxFunction value
-            name: String::from(""),
-            depth: None,
-        });
-
         let mut functions = Vec::new();
-        functions.push(FunctionChunk {
-            chunk: Chunk::new(),
-            name: Some(function_name),
-            arity: 0,
-            fn_type: function_type,
-        });
+        functions.push(FunctionChunk::new(Some(function_name), 0, function_type));
 
         let scanner = parent.scanner.clone();
         let mut tokens: Vec<Token> = Vec::new();
@@ -699,8 +626,7 @@ impl<'a> Parser<'a> {
             functions,
             function_type,
             function_depth: parent.function_depth + 1, // Counter to determine how far into the functions vec we need to go
-            locals,
-            scope_depth: parent.scope_depth, // Child is responsible for calling begin and end scope
+            resolver: Resolver::from_old(&parent.resolver),
             had_error: false,
             panic_mode: false,
         }
@@ -730,20 +656,13 @@ impl<'a> Parser<'a> {
         let mut functions = Vec::new();
         functions.push(FunctionChunk::new(None, 0, FunctionType::Script)); // Start the compilation with a top level function
 
-        let mut locals = Vec::new();
-        locals.push(Local {             // Placeholder local variable for VM use -> Will be filled by the top level function
-            name: String::from(""),
-            depth: None,
-        });
-
         Parser {
             scanner,
             tokens,
-            locals, 
-            scope_depth: 0,
             functions,
             function_type: FunctionType::Script,
             function_depth: 0,
+            resolver: Resolver::new(),
             had_error: false,
             panic_mode: false,
         }
@@ -758,17 +677,12 @@ impl<'a> Parser<'a> {
 
         if DEBUG {
             for fn_chunk in self.functions.iter() {
-                disassemble_chunk(&fn_chunk.chunk, &fn_chunk.name.as_ref().unwrap_or(&String::from("<script>")));
+                disassemble_chunk(&fn_chunk.chunk, &fn_chunk.name);
             }
         }
 
         if !self.had_error { Some(self.functions) } else { None }
     }
-}
-
-struct Local {
-    name: String,
-    depth: Option<usize>
 }
 
 // Removes the surrounding "" around TokenString lexemmes

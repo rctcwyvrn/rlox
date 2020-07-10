@@ -1,6 +1,20 @@
 use crate::vm::VM;
 use crate::native::NativeFn;
 
+
+/// Runtime representation of the closure, ie what variables are in scope
+#[derive(Debug, Clone, PartialEq)]
+pub struct ObjClosure {
+    pub function: usize, 
+    pub values: usize, // Gets it's upvalues from the FunctionChunk (?? will this work? i have no clue!)
+}
+
+impl ObjClosure {
+    pub fn new(function: usize, values: usize) -> ObjClosure {
+        ObjClosure {function, values }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Double(f64),
@@ -8,11 +22,12 @@ pub enum Value {
     Nil,
     LoxString(String), 
     LoxFunction(usize), // Index of the function in the functions Vec in VM
+    LoxClosure(ObjClosure),
     NativeFunction(NativeFn),
 }
 
 impl Value {
-    // Used for print statements, use {:?} debug formatting for trace and stack examining
+    /// Used for print statements, use {:?} debug formatting for trace and stack examining
     pub fn to_string(&self, vm: &VM) -> String {
         match self {
             Value::Double(x) => format!("{}",x),
@@ -21,6 +36,7 @@ impl Value {
             Value::Nil => String::from("Nil"),
             Value::LoxFunction(x) => format!("<fn {}>", vm.functions.get(*x).unwrap().name.as_ref().unwrap()),
             Value::NativeFunction(x) => format!("<native_fn {:?}>", x),
+            Value::LoxClosure(closure) => format!("<fn {} | {:?}>", vm.functions.get(closure.function).unwrap().name.as_ref().unwrap(), closure),
         }
     }
 

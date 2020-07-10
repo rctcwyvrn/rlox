@@ -6,6 +6,7 @@ mod compiler;
 mod scanner;
 mod prec;
 mod native;
+mod resolver;
 
 use crate::vm::{VM, ExecutionMode, InterpretResult};
 use crate::compiler::{Parser, DEBUG};

@@ -8,14 +8,16 @@ pub enum OpCode {
     OpDefineGlobal(usize), // Index of the LoxString variable name in the constants vec
     OpGetGlobal(usize), // ^
     OpSetGlobal(usize), // ^
-
     OpGetLocal(usize), // Index on the stack
     OpSetLocal(usize), // ^
+    OpGetUpvalue(usize), // upvalue index for a closure
+    OpSetUpvalue(usize), // ^
 
     OpJump(usize), // Jump ip offset
     OpJumpIfFalse(usize),
     OpLoop(usize), // Jump backwards by offset
-    
+
+    OpClosure, // Wraps the top value of the stack (must be a LoxFunction) in a LoxClosure
     OpCall(usize), // Arity
 
     OpConstant(usize), // Index of the constant we want to retrieve
@@ -75,12 +77,21 @@ impl Chunk {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FunctionType {
+    Function,
+    Script
+}
+
+/// Compile time representation of a function, ie its code, name, resolved closure information
 #[derive(Debug)]
 pub struct FunctionChunk {
     pub chunk: Chunk,
-    pub name: Option<String>,
+    pub name: Option<String>, // None for the top level script
     pub arity: usize,
     pub fn_type: FunctionType,
+
+    pub upvalue_count: usize,
 }
 
 impl FunctionChunk {
@@ -90,12 +101,10 @@ impl FunctionChunk {
             name,
             arity,
             fn_type,
+            upvalue_count: 0,
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum FunctionType {
-    Function,
-    Script
-}
+#[derive(Debug)]
+struct UpValue {}

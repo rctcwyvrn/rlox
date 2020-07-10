@@ -53,6 +53,7 @@ impl Resolver {
         self.locals.last_mut().unwrap().depth = Some(self.scope_depth);
     }
 
+    /// MUST BE CALLED BY Compiler::declare_variable()
     /// Declare new local variables by pushing them onto self.locals
     /// 
     /// New locals are set to a special "uninitialized" state until define_variable() is called

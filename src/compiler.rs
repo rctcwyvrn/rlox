@@ -7,7 +7,7 @@ use crate::resolver::Resolver;
 
 pub const DEBUG: bool = false;
 
-pub struct Parser<'a> {
+pub struct Compiler<'a> {
     scanner: Scanner<'a>,
     tokens: Vec<Token>,
 
@@ -21,7 +21,7 @@ pub struct Parser<'a> {
     panic_mode: bool,
 }
 
-impl<'a> Parser<'a> {
+impl<'a> Compiler<'a> {
     fn current_chunk(&mut self) -> &mut Chunk {
         &mut self.functions.first_mut().unwrap().chunk
     }
@@ -426,7 +426,7 @@ impl<'a> Parser<'a> {
 
     /// Compiles the function into a new FunctionChunk, adds it to the current parser, adds the LoxFunction object to the constants stack, returns the OpConstant pointing to it
     fn function(&mut self, fun_type: FunctionType) {
-        let mut function_parser = Parser::from_old(fun_type, self);
+        let mut function_parser = Compiler::from_old(fun_type, self);
         function_parser.resolver.begin_scope();
 
         function_parser.consume(TokenType::TokenLeftParen, "Expected '(' after function name");
@@ -608,7 +608,7 @@ impl<'a> Parser<'a> {
 
     /// Create a child parser to parse a function def
     /// Todo: maybe merge with Parser::new() ? There are some similarities
-    fn from_old(function_type: FunctionType, parent: &Parser<'a>) -> Parser<'a> {
+    fn from_old(function_type: FunctionType, parent: &Compiler<'a>) -> Compiler<'a> {
         // We know we must have just parsed the function identifier, so just grab it from there
         let function_name = parent.previous().lexemme.clone();
 
@@ -620,7 +620,7 @@ impl<'a> Parser<'a> {
         let last = parent.tokens.last().unwrap().clone();
         tokens.push(last);
 
-        Parser {
+        Compiler {
             scanner,
             tokens,
             functions,
@@ -635,7 +635,7 @@ impl<'a> Parser<'a> {
     /// Finish the usage of the child parser by adding it's functions vec and scanner progress
     /// 
     /// Returns the index of the FunctionChunk corresponding with the newly parsed function in the functions vec
-    fn end_child(&mut self, child: Parser<'a>) -> usize {
+    fn end_child(&mut self, child: Compiler<'a>) -> usize {
         self.scanner = child.scanner; // Update the scanner
         self.tokens.push(child.previous().clone());
         self.tokens.push(child.current().clone());
@@ -647,7 +647,7 @@ impl<'a> Parser<'a> {
         index + self.function_depth
     }
 
-    pub fn new(code: &'a String) -> Parser<'a> {
+    pub fn new(code: &'a String) -> Compiler<'a> {
         let mut scanner = Scanner::init_scanner(code);
 
         let mut tokens = Vec::new();
@@ -656,7 +656,7 @@ impl<'a> Parser<'a> {
         let mut functions = Vec::new();
         functions.push(FunctionChunk::new(None, 0, FunctionType::Script)); // Start the compilation with a top level function
 
-        Parser {
+        Compiler {
             scanner,
             tokens,
             functions,

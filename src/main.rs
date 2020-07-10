@@ -9,7 +9,7 @@ mod native;
 mod resolver;
 
 use crate::vm::{VM, ExecutionMode, InterpretResult};
-use crate::compiler::{Parser, DEBUG};
+use crate::compiler::{Compiler, DEBUG};
 
 use std::env;
 use std::io;
@@ -60,8 +60,8 @@ fn run_file(filename: &String) -> InterpretResult {
 }
 
 fn interpret(source: &String) -> InterpretResult {
-    let parser = Parser::new(source);
-    let result = parser.compile();
+    let compiler = Compiler::new(source);
+    let result = compiler.compile();
     if let None = result {
         return InterpretResult::InterpretCompileError;
     }

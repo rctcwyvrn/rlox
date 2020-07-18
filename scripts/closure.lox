@@ -4,6 +4,6 @@ fun outer() {
   fun inner() {
     print x;
   }
-  inner();
+  inner;
 }
-outer();
+outer()();

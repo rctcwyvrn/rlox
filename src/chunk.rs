@@ -1,6 +1,6 @@
 use crate::value::Value;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OpCode {
     OpReturn,
     OpPop,
@@ -45,7 +45,7 @@ pub struct Instr {
     pub line_num: usize
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Chunk {
     pub code: Vec<Instr>,
     pub constants: Vec<Value>
@@ -84,7 +84,7 @@ pub enum FunctionType {
 }
 
 /// Compile time representation of a function, ie its code, name, resolved closure information
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunctionChunk {
     pub chunk: Chunk,
     pub name: Option<String>, // None for the top level script
@@ -105,6 +105,3 @@ impl FunctionChunk {
         }
     }
 }
-
-#[derive(Debug)]
-struct UpValue {}

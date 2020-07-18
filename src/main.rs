@@ -10,6 +10,7 @@ mod resolver;
 
 use crate::vm::{VM, ExecutionMode, InterpretResult};
 use crate::compiler::{Compiler, DEBUG};
+use crate::resolver::{Resolver};
 
 use std::env;
 use std::io;
@@ -60,7 +61,8 @@ fn run_file(filename: &String) -> InterpretResult {
 }
 
 fn interpret(source: &String) -> InterpretResult {
-    let compiler = Compiler::new(source);
+    let mut resolver = Resolver::new();
+    let compiler = Compiler::new(source, &mut resolver);
     let result = compiler.compile();
     if let None = result {
         return InterpretResult::InterpretCompileError;

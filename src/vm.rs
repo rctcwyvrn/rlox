@@ -139,16 +139,17 @@ impl VMState {
         self.push(result);
     }
 
-    fn define_native(&mut self, name: String, native_fn: NativeFn) {
-        self.push(Value::LoxString(name.clone()));           // For garbage collection later?
-        self.push(Value::NativeFunction(native_fn)); // ^
-        self.globals.insert(name, Value::NativeFunction(native_fn));
-        self.pop();
-        self.pop();
-    }
+    // fn define_native(&mut self, name: String, native_fn: NativeFn) {
+    //     self.push(Value::LoxString(name.clone()));           // For garbage collection later?
+    //     self.push(Value::NativeFunction(native_fn)); // ^
+    //     self.globals.insert(name, Value::NativeFunction(native_fn));
+    //     self.pop();
+    //     self.pop();
+    // }
 
+    /// Just adds clutter for now, re-add when there is a native lib to actually use
     fn define_std_lib(&mut self) {
-        self.define_native(String::from("test_native"), test_native);
+        // self.define_native(String::from("test_native"), test_native);
     }
 
     fn debug_trace(&self) {

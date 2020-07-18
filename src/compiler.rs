@@ -3,31 +3,39 @@ use crate::chunk::{OpCode, Instr, Chunk, FunctionChunk, FunctionType};
 use crate::value::Value;
 use crate::prec::{Precedence, ParseFn, get_rule};
 use crate::debug::disassemble_chunk;
-use crate::resolver::Resolver;
+use crate::resolver::{Resolver};
 
-pub const DEBUG: bool = false;
+pub const DEBUG: bool = true;
 
+#[derive(Debug)]
 pub struct Compiler<'a> {
     scanner: Scanner<'a>,
     tokens: Vec<Token>,
 
     functions: Vec<FunctionChunk>,
-    function_type: FunctionType,
     function_depth: usize, // # of child parsers we're in, had to be added for functions defined in other functions
 
-    resolver: Resolver, // Manages the slots for the local variables and upvalues
+    resolver: &'a mut Resolver, // Manages the slots for the local variables and upvalues, represented as a Vec of individal ResolverNodes
 
     had_error: bool,
     panic_mode: bool,
 }
 
-impl<'a> Compiler<'a> {
+impl Compiler<'_> {
     fn current_chunk(&mut self) -> &mut Chunk {
-        &mut self.functions.first_mut().unwrap().chunk
+        &mut self.functions.get_mut(self.function_depth).unwrap().chunk
     }
 
     fn current_chunk_ref(&self) -> &Chunk {
-        &self.functions.first().unwrap().chunk
+        &self.functions.get(self.function_depth).unwrap().chunk
+    }
+
+    fn current_fn(&mut self) -> &mut FunctionChunk {
+        self.functions.get_mut(self.function_depth).unwrap()
+    }
+
+    fn current_fn_type(&self) -> FunctionType {
+        self.functions.get(self.function_depth).unwrap().fn_type
     }
 
     fn advance(&mut self){
@@ -315,7 +323,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn return_statement(&mut self) {
-        if self.function_type == FunctionType::Script {
+        if self.current_fn_type() == FunctionType::Script {
             self.error("Cannot return from top-level code");
         }
 
@@ -426,31 +434,31 @@ impl<'a> Compiler<'a> {
 
     /// Compiles the function into a new FunctionChunk, adds it to the current parser, adds the LoxFunction object to the constants stack, returns the OpConstant pointing to it
     fn function(&mut self, fun_type: FunctionType) {
-        let mut function_parser = Compiler::from_old(fun_type, self);
-        function_parser.resolver.begin_scope();
+        //let mut function_parser = self.from_old(fun_type);
 
-        function_parser.consume(TokenType::TokenLeftParen, "Expected '(' after function name");
-        if !function_parser.check(TokenType::TokenRightParen) {
+        let index = self.start_child(fun_type);
+        self.resolver.begin_scope();
+
+        self.consume(TokenType::TokenLeftParen, "Expected '(' after function name");
+        if !self.check(TokenType::TokenRightParen) {
             loop {
-                let mut cur_function = function_parser.functions.first_mut().unwrap();
+                let cur_function = self.current_fn();
                 cur_function.arity += 1;
                 if cur_function.arity > 255 {
-                    function_parser.error("Cannot have more than 255 parameters");
+                    self.error("Cannot have more than 255 parameters");
                 }
 
-                let param_constant = function_parser.parse_variable("Expected parameter name");
-                function_parser.define_variable(param_constant);
-
-                if !function_parser.match_cur(TokenType::TokenComma) { break; }
+                let param_constant = self.parse_variable("Expected parameter name");
+                self.define_variable(param_constant);
+                if !self.match_cur(TokenType::TokenComma) { break; }
             }
         }
-        function_parser.consume(TokenType::TokenRightParen, "Expected ')' after function parameters");
+        self.consume(TokenType::TokenRightParen, "Expected ')' after function parameters");
         
-        function_parser.consume(TokenType::TokenLeftBrace, "Expected '{' before function body");
-        function_parser.block();
-        function_parser.end_compilation();
+        self.consume(TokenType::TokenLeftBrace, "Expected '{' before function body");
+        self.block();        
+        self.end_child();
 
-        let index = self.end_child(function_parser);
         self.emit_constant(Value::LoxFunction(index));
         self.emit_instr(OpCode::OpClosure);
     }
@@ -527,7 +535,7 @@ impl<'a> Compiler<'a> {
         let (get_op, set_op) = if let Some(local_index) = local_arg  {
             (OpCode::OpGetLocal(local_index), OpCode::OpSetLocal(local_index))
 
-        } else if let Some(upvalue_index) = self.resolver.resolve_upvalue(name, self.function_depth) {
+        } else if let Some(upvalue_index) = self.resolver.resolve_upvalue(name) {
             (OpCode::OpGetUpvalue(upvalue_index), OpCode::OpSetUpvalue(upvalue_index))
 
         } else {
@@ -606,49 +614,26 @@ impl<'a> Compiler<'a> {
         arg_count
     }
 
-    /// Create a child parser to parse a function def
-    /// Todo: maybe merge with Parser::new() ? There are some similarities
-    fn from_old(function_type: FunctionType, parent: &Compiler<'a>) -> Compiler<'a> {
-        // We know we must have just parsed the function identifier, so just grab it from there
-        let function_name = parent.previous().lexemme.clone();
-
-        let mut functions = Vec::new();
-        functions.push(FunctionChunk::new(Some(function_name), 0, function_type));
-
-        let scanner = parent.scanner.clone();
-        let mut tokens: Vec<Token> = Vec::new();
-        let last = parent.tokens.last().unwrap().clone();
-        tokens.push(last);
-
-        Compiler {
-            scanner,
-            tokens,
-            functions,
-            function_type,
-            function_depth: parent.function_depth + 1, // Counter to determine how far into the functions vec we need to go
-            resolver: Resolver::from_old(&parent.resolver),
-            had_error: false,
-            panic_mode: false,
-        }
+    /// Sets the compiler to generate a new function chunk for the next segment of code
+    fn start_child(&mut self, function_type: FunctionType) -> usize {
+        let function_name = self.previous().lexemme.clone();
+        self.functions.push(FunctionChunk::new(Some(function_name), 0, function_type));
+        self.resolver.push();
+        self.function_depth += 1;
+        self.functions.len() - 1 
     }
 
-    /// Finish the usage of the child parser by adding it's functions vec and scanner progress
-    /// 
-    /// Returns the index of the FunctionChunk corresponding with the newly parsed function in the functions vec
-    fn end_child(&mut self, child: Compiler<'a>) -> usize {
-        self.scanner = child.scanner; // Update the scanner
-        self.tokens.push(child.previous().clone());
-        self.tokens.push(child.current().clone());
-
-        let index = self.functions.len();
-        for fun in child.functions.into_iter() {
-            self.functions.push(fun); // Update the functions
+    /// Switches the current chunk out of the new function def
+    fn end_child(&mut self) {
+        if self.current_chunk_ref().code.last().unwrap().op_code != OpCode::OpReturn {
+            self.emit_return();
         }
-        index + self.function_depth
+        self.function_depth -= 1;
+        self.resolver.pop();
     }
 
-    pub fn new(code: &'a String) -> Compiler<'a> {
-        let mut scanner = Scanner::init_scanner(code);
+    pub fn new<'a>(code: &'a String, resolver: &'a mut Resolver) -> Compiler<'a> {
+        let mut scanner = Scanner::new(code);
 
         let mut tokens = Vec::new();
         tokens.push(scanner.scan_token()); // Load up the first token
@@ -660,9 +645,8 @@ impl<'a> Compiler<'a> {
             scanner,
             tokens,
             functions,
-            function_type: FunctionType::Script,
             function_depth: 0,
-            resolver: Resolver::new(),
+            resolver,
             had_error: false,
             panic_mode: false,
         }

@@ -18,11 +18,11 @@ pub enum TokenType {
 pub struct Token {
     pub token_type: TokenType,
     pub line_num: usize,
-    pub lexemme: String, // rust gets mad at me if i try to make this a reference to the original String back in main, so we need to copy each lexemme out, which kinda sucks
+    pub lexemme: String,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Scanner<'a> { // I don't understand lifetimes or what this does, but it makes the compiller happy so that's good enough for now :P
+pub struct Scanner<'a> {
     code: &'a str,
     cur_line: usize,
     start_pos: usize,
@@ -30,7 +30,7 @@ pub struct Scanner<'a> { // I don't understand lifetimes or what this does, but 
 }
 
 impl Scanner<'_> {
-    pub fn init_scanner(code: &str) -> Scanner {
+    pub fn new(code: &str) -> Scanner {
         Scanner {code, cur_line: 1, start_pos: 0, cur_pos: 0}
     }
 

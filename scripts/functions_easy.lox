@@ -3,5 +3,5 @@ fun simple(x) {
     return x + 1;
 }
 
-// print simple(1);
-print simple;
+print simple(1);
+// print simple;

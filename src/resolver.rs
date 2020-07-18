@@ -1,11 +1,8 @@
-
-// type Link = Option<Box<Resolver>>;
-
 /// Manages the declaration and definition of local variables
 /// 
-/// One resolver is created for each Compiler, ie for each function definition. Enclosing locals points to the parent resolver
-/// 
-/// After each function definition the upvalues must be merged into FunctionChunk
+/// One ResolverNode is created and pushed on for each function definition. 
+/// Normal resolution is handled by the current ResolverNode.
+/// Resolution that involves closures (upvalues) is done by the Resolver (since it will potentially involve many ResolverNodes) 
 #[derive(Debug, Clone)]
 pub struct Resolver {
     stack: Vec<ResolverNode>
@@ -15,12 +12,12 @@ pub struct Resolver {
 macro_rules! delegate_to_latest {
     ($fn_name: ident, $ret: ty) => {
         pub fn $fn_name(&mut self) -> $ret {
-            self.stack.last_mut().unwrap().$fn_name()
+            self.current_node().$fn_name()
         }
     };
     ($fn_name: ident, $ret: ty, $param: ty) => {
         pub fn $fn_name(&mut self, x: $param) -> $ret {
-            self.stack.last_mut().unwrap().$fn_name(x)
+            self.current_node().$fn_name(x)
         }
     }
 }
@@ -33,6 +30,10 @@ impl Resolver {
 
     delegate_to_latest!(declare_variable, bool, String);
     delegate_to_latest!(resolve_local, Result<Option<usize>, ()>, &str);
+
+    fn current_node(&mut self) -> &mut ResolverNode {
+        self.stack.last_mut().unwrap()
+    }
 
     /// Attempt to resolve the variable name by looking at the enclosing locals
     /// If found, add an upvalue to self.upvalues
@@ -73,6 +74,8 @@ impl Resolver {
         self.stack.push(new);
     }
 
+    /// !! FIXME !! THIS IS TEMPORARY !!
+    /// 
     /// Yeet off the old ResolverNodes
     /// I'm sure I'll need to change this later to actually keep the values and have an usize struct var to keep track of the current ResolverNode
     /// But whatever I want to see if this shit works
@@ -186,7 +189,7 @@ impl ResolverNode {
 
     /// Walk and look for a local variable with the same name, None if the var is not found (treat as global)
     /// 
-    /// *  Err => Syntax error detected, throw an error
+    /// *  Err(_) => Syntax error detected, throw an error
     /// *  Ok(None) => Resolution failed
     /// *  Ok(index) => found
     pub fn resolve_local(&self, name: &str) -> Result<Option<usize>, ()> {

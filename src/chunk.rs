@@ -39,13 +39,13 @@ pub enum OpCode {
     OpPrint,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Instr {
     pub op_code: OpCode,
     pub line_num: usize
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Chunk {
     pub code: Vec<Instr>,
     pub constants: Vec<Value>
@@ -84,7 +84,7 @@ pub enum FunctionType {
 }
 
 /// Compile time representation of a function, ie its code, name, resolved closure information
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct FunctionChunk {
     pub chunk: Chunk,
     pub name: Option<String>, // None for the top level script

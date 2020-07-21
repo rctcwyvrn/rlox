@@ -3,6 +3,9 @@ fun outer() {
   fun inner() {
     print x;
   }
-  inner();
+
+  return inner;
 }
-outer();
+
+var closure = outer();
+closure();

@@ -5,7 +5,7 @@ use crate::prec::{Precedence, ParseFn, get_rule};
 use crate::debug::disassemble_chunk;
 use crate::resolver::{Resolver};
 
-pub const DEBUG: bool = true;
+pub const DEBUG: bool = false;
 
 #[derive(Debug)]
 pub struct Compiler<'a> {
@@ -628,8 +628,9 @@ impl Compiler<'_> {
         if self.current_chunk_ref().code.last().unwrap().op_code != OpCode::OpReturn {
             self.emit_return();
         }
+        let upvalues = self.resolver.pop();
+        self.current_fn().set_upvalues(upvalues);
         self.function_depth -= 1;
-        self.resolver.pop();
     }
 
     pub fn new<'a>(code: &'a String, resolver: &'a mut Resolver) -> Compiler<'a> {

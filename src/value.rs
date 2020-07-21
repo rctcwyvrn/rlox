@@ -6,12 +6,12 @@ use crate::native::NativeFn;
 #[derive(Debug, Clone, PartialEq)]
 pub struct ObjClosure {
     pub function: usize, 
-    pub values: usize, // Gets it's upvalues from the FunctionChunk (?? will this work? i have no clue!)
+    pub values: Vec<Value>, // Will be filled at runtime with captured upvalues
 }
 
 impl ObjClosure {
-    pub fn new(function: usize, values: usize) -> ObjClosure {
-        ObjClosure {function, values }
+    pub fn new(function: usize) -> ObjClosure {
+        ObjClosure { function, values: Vec::new() }
     }
 }
 

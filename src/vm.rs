@@ -2,6 +2,7 @@ use crate::chunk::{OpCode, Instr, FunctionChunk};
 use crate::debug::*;
 use crate::value::{Value, ObjClosure, is_falsey, values_equal};
 use crate::native::*;
+use crate::resolver::UpValue;
 
 use std::collections::HashMap;
 
@@ -75,6 +76,25 @@ impl VMState {
     fn frame_start(&self) -> usize {
         self.frame().frame_start
     }
+
+    fn current_closure(&self) -> &ObjClosure {
+        let closure_val = self.stack.get(self.frame().frame_start).unwrap();
+        if let Value::LoxClosure(parent_closure) = closure_val {
+            &parent_closure
+        } else {
+            panic!("VM panic! I screwed up and the start of the stack frame isnt a closure please smite me")
+        }
+    }
+
+    fn current_closure_mut(&mut self) -> &mut ObjClosure {
+        let frame_start = self.frame().frame_start;
+        let closure_val = self.stack.get_mut(frame_start).unwrap();
+        if let Value::LoxClosure(parent_closure) = closure_val {
+            parent_closure
+        } else {
+            panic!("VM panic! I screwed up and the start of the stack frame isnt a closure please smite me")
+        }
+    }
     
     fn increment_ip(&mut self) {
         self.frame_mut().ip+=1;
@@ -86,6 +106,30 @@ impl VMState {
 
     fn jump_back(&mut self, neg_offset: usize) {
         self.frame_mut().ip -= neg_offset;
+    }
+
+    /// Fixme: mother of god there has to be a better way to do this than just having unwraps everywhere...
+    fn capture_upvalue(&self, upvalue: &UpValue) -> Value {
+        if upvalue.is_local {
+            // Just copy the value from the current stack frame (which is the parents)
+            self.stack.get(self.frame().frame_start + upvalue.index).unwrap().clone()
+        } else {
+            // Look at the current frame's closure's upvalue vec and copy it from there
+            let parent_closure = self.current_closure();
+            parent_closure.values.get(upvalue.index).unwrap().clone()
+        }
+    }
+
+    fn push_upvalue(&mut self, index: usize) {
+        let closure = self.current_closure();
+        let val = closure.values.get(index).unwrap().clone();
+        self.push(val);
+    }
+
+    fn set_upvalue(&mut self, index: usize) {
+        let val = self.peek().clone();
+        let closure = self.current_closure_mut();
+        closure.values[index] = val;
     }
 
     /// Checks if the targetted Value is a LoxFunction, passes it to call() to continue attempting the call.
@@ -153,6 +197,7 @@ impl VMState {
     }
 
     fn debug_trace(&self) {
+        println!("> Frame:\t\t{:?}", self.frame());
         println!("> Stack: ");
         for value in &self.stack {
             println!(">> [ {:?} ]", value);
@@ -355,6 +400,23 @@ impl VM {
                     state.stack[dest] = state.peek().clone(); // Same idea as OpSetGlobal, don't pop value since it's an expression
                 },
 
+                OpCode::OpGetUpvalue(index) => { state.push_upvalue(index); },
+                OpCode::OpSetUpvalue(index) => { state.set_upvalue(index); },
+                OpCode::OpClosure => {
+                    if let Value::LoxFunction(function) = state.pop() {
+                        let mut closure = ObjClosure::new(function); // Capture values into the closure here
+
+                        let fn_chunk = self.functions.get(function).unwrap();
+                        for upvalue in fn_chunk.upvalues.as_ref().unwrap().iter() {
+                            closure.values.push(state.capture_upvalue(upvalue))
+                        }
+
+                        state.push(Value::LoxClosure(closure));
+                    } else {
+                        panic!("VM panic! Attempted to wrap a non-function value in a closure");
+                    }
+                },
+
                 OpCode::OpJump(offset) => state.jump(offset),
                 OpCode::OpJumpIfFalse(offset) => {
                     if is_falsey(state.peek()) { // Does not pop the value off the top of the stack because we need them for logical operators
@@ -362,15 +424,6 @@ impl VM {
                     }
                 },
                 OpCode::OpLoop(neg_offset) => state.jump_back(neg_offset),
-
-                OpCode::OpClosure => {
-                    if let Value::LoxFunction(function) = state.pop() {
-                        let closure = ObjClosure::new(function, 6969);
-                        state.push(Value::LoxClosure(closure));
-                    } else {
-                        panic!("VM panic! Attempted to wrap a non-function value in a closure");
-                    }
-                },
 
                 OpCode::OpCall(arity) => {
                     let result = state.call_value(arity, &self.functions);
@@ -423,10 +476,6 @@ impl VM {
 
                 OpCode::OpPrint => {
                     println!("{}",state.pop().to_string(&self));
-                }
-
-                _ => {
-                    println!("skipping for now {:?}", instr.op_code);
                 }
             }
         }

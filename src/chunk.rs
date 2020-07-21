@@ -1,4 +1,5 @@
 use crate::value::Value;
+use crate::resolver::{UpValue};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OpCode {
@@ -8,16 +9,18 @@ pub enum OpCode {
     OpDefineGlobal(usize), // Index of the LoxString variable name in the constants vec
     OpGetGlobal(usize), // ^
     OpSetGlobal(usize), // ^
+    
     OpGetLocal(usize), // Index on the stack
     OpSetLocal(usize), // ^
+
     OpGetUpvalue(usize), // upvalue index for a closure
     OpSetUpvalue(usize), // ^
+    OpClosure, // Wraps the top value of the stack (must be a LoxFunction) in a LoxClosure, capturing the appropriate UpValues at the same time 
 
     OpJump(usize), // Jump ip offset
     OpJumpIfFalse(usize),
     OpLoop(usize), // Jump backwards by offset
 
-    OpClosure, // Wraps the top value of the stack (must be a LoxFunction) in a LoxClosure
     OpCall(usize), // Arity
 
     OpConstant(usize), // Index of the constant we want to retrieve
@@ -90,8 +93,7 @@ pub struct FunctionChunk {
     pub name: Option<String>, // None for the top level script
     pub arity: usize,
     pub fn_type: FunctionType,
-
-    pub upvalue_count: usize,
+    pub upvalues: Option<Vec<UpValue>>, // None while the function is being defined/for the top level script, must be set to Some after the definition is complete otherwise
 }
 
 impl FunctionChunk {
@@ -101,7 +103,11 @@ impl FunctionChunk {
             name,
             arity,
             fn_type,
-            upvalue_count: 0,
+            upvalues: None,
         }
+    }
+
+    pub fn set_upvalues(&mut self, upvalues: Vec<UpValue>) {
+        self.upvalues = Some(upvalues);
     }
 }

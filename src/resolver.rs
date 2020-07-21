@@ -1,6 +1,8 @@
 /// Manages the declaration and definition of local variables
 /// 
-/// One ResolverNode is created and pushed on for each function definition. 
+/// One ResolverNode is created and pushed onto the stack for each function definition. It then gets popped off once its definition ends, so the value on top of each ResolverNode
+/// on the stack will always be its parent
+/// 
 /// Normal resolution is handled by the current ResolverNode.
 /// Resolution that involves closures (upvalues) is done by the Resolver (since it will potentially involve many ResolverNodes) 
 #[derive(Debug, Clone)]
@@ -23,38 +25,53 @@ macro_rules! delegate_to_latest {
 }
 
 impl Resolver {
-    delegate_to_latest!(begin_scope, ());
-    delegate_to_latest!(end_scope, usize);
-    delegate_to_latest!(is_global, bool);
-    delegate_to_latest!(mark_initialized, ());
-
-    delegate_to_latest!(declare_variable, bool, String);
-    delegate_to_latest!(resolve_local, Result<Option<usize>, ()>, &str);
-
     fn current_node(&mut self) -> &mut ResolverNode {
         self.stack.last_mut().unwrap()
     }
 
-    /// Attempt to resolve the variable name by looking at the enclosing locals
-    /// If found, add an upvalue to self.upvalues
-    ///
+    delegate_to_latest!(begin_scope, ());
+    delegate_to_latest!(end_scope, usize);
+    delegate_to_latest!(is_global, bool);
+    delegate_to_latest!(mark_initialized, ());
+    delegate_to_latest!(declare_variable, bool, String);
+    delegate_to_latest!(resolve_local, Result<Option<usize>, ()>, &str);
+
+
+    /// Calls Resolver::recursive_resolve to handle the flattening of upvalues
+    /// 
     /// Returns the index of the UpValue in the upvalues Vec
     pub fn resolve_upvalue(&mut self, name: &str) -> Option<usize> {
-        None
-        // if !self.has_parent() { return None; } // Can't have upvalues in the global script
-        // let mut upval_index = None;
-        // for (i, local) in self.parent().locals.iter().enumerate() {
-        //     if local.name.eq(name){
-        //         upval_index = Some(i);
-        //         break;
-        //     }
-        // }
+        let n = self.stack.len();
+        if n >= 2 {
+            self.recursive_resolve(name, n-1)
+        } else {
+            None
+        }
+    }
 
-        // if let Some(index) = upval_index {
-        //     Some(self.add_upvalue(index, true))
-        // } else {
-        //     None
-        // }
+    /// Recursively checks parents for the given name, using child_index to index into the ResolverNode stack
+    /// 
+    /// Attempt to resolve the variable name by looking at the locals of the parent (which sits at child_index - 1)
+    /// If found, add an upvalue to self.upvalues and return the index in the UpValues vec
+    fn recursive_resolve(&mut self, name: &str, child_index: usize) -> Option<usize> {
+        let parent = self.stack.get(child_index - 1)?;
+        let mut upval_index = None;
+        for (i, local) in parent.locals.iter().enumerate() {
+            if local.name.eq(name){
+                upval_index = Some(i);
+                break;
+            }
+        }
+
+        if let Some(index) = upval_index {
+            let child = self.stack.get_mut(child_index)?;
+            return Some(child.add_upvalue(index, true));
+        } else if let Some(index) = self.recursive_resolve(name, child_index - 1) {
+            let child = self.stack.get_mut(child_index)?;
+            return Some(child.add_upvalue(index, false));
+        } else {
+            None
+        }
     }
 
     /// Push a new ResolverNode for the new function scope
@@ -79,8 +96,9 @@ impl Resolver {
     /// Yeet off the old ResolverNodes
     /// I'm sure I'll need to change this later to actually keep the values and have an usize struct var to keep track of the current ResolverNode
     /// But whatever I want to see if this shit works
-    pub fn pop(&mut self) {
-        self.stack.pop();
+    pub fn pop(&mut self) -> Vec<UpValue> {
+        let latest = self.stack.pop().unwrap(); // Fixme: make this not panic?
+        latest.upvalues
     }
 
     pub fn new() -> Resolver {
@@ -217,10 +235,7 @@ impl ResolverNode {
             if existing_upvalue.index == index { return i }
         }
 
-        self.upvalues.push(UpValue {
-            is_local,
-            index,
-        });
+        self.upvalues.push(UpValue { is_local, index });
         self.upvalues.len() - 1
     }
 }
@@ -232,8 +247,8 @@ pub struct Local {
 }
 
 /// Similar to local, but for upvalues
-#[derive(Debug, Clone, Copy)]
-struct UpValue {
-    is_local: bool,
-    index: usize,
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct UpValue {
+    pub is_local: bool,
+    pub index: usize,
 }

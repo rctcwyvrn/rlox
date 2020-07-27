@@ -5,7 +5,7 @@ use crate::prec::{Precedence, ParseFn, get_rule};
 use crate::debug::disassemble_chunk;
 use crate::resolver::{Resolver};
 
-pub const DEBUG: bool = false;
+pub const DEBUG: bool = true;
 
 #[derive(Debug)]
 pub struct Compiler<'a> {
@@ -13,7 +13,8 @@ pub struct Compiler<'a> {
     tokens: Vec<Token>,
 
     functions: Vec<FunctionChunk>,
-    function_depth: usize, // # of child parsers we're in, had to be added for functions defined in other functions
+    current_function: usize, // The current FunctionChunk
+    parent_functions: Vec<usize>, // Which FunctionChunk should the the compiler return to after. Acts as a stack
 
     resolver: &'a mut Resolver, // Manages the slots for the local variables and upvalues, represented as a Vec of individal ResolverNodes
 
@@ -23,19 +24,19 @@ pub struct Compiler<'a> {
 
 impl Compiler<'_> {
     fn current_chunk(&mut self) -> &mut Chunk {
-        &mut self.functions.get_mut(self.function_depth).unwrap().chunk
+        &mut self.functions.get_mut(self.current_function).unwrap().chunk
     }
 
     fn current_chunk_ref(&self) -> &Chunk {
-        &self.functions.get(self.function_depth).unwrap().chunk
+        &self.functions.get(self.current_function).unwrap().chunk
     }
 
     fn current_fn(&mut self) -> &mut FunctionChunk {
-        self.functions.get_mut(self.function_depth).unwrap()
+        self.functions.get_mut(self.current_function).unwrap()
     }
 
     fn current_fn_type(&self) -> FunctionType {
-        self.functions.get(self.function_depth).unwrap().fn_type
+        self.functions.get(self.current_function).unwrap().fn_type
     }
 
     fn advance(&mut self){
@@ -44,7 +45,7 @@ impl Compiler<'_> {
             self.error("Error in scanning");
             self.advance();
         }
-        //println!("depth = {} | prev {:?} | cur {:?}", self.function_depth, self.previous(), self.current());
+        //println!("depth = {} | prev {:?} | cur {:?}", self.current_function, self.previous(), self.current());
     }
 
     fn previous(&self) -> &Token {
@@ -619,18 +620,21 @@ impl Compiler<'_> {
         let function_name = self.previous().lexemme.clone();
         self.functions.push(FunctionChunk::new(Some(function_name), 0, function_type));
         self.resolver.push();
-        self.function_depth += 1;
+        self.parent_functions.push(self.current_function);
+        self.current_function = self.functions.len() - 1;
+
         self.functions.len() - 1 
     }
 
     /// Switches the current chunk out of the new function def
     fn end_child(&mut self) {
+        // Emit an implicit nil return if not specified explicity
         if self.current_chunk_ref().code.last().unwrap().op_code != OpCode::OpReturn {
             self.emit_return();
         }
         let upvalues = self.resolver.pop();
         self.current_fn().set_upvalues(upvalues);
-        self.function_depth -= 1;
+        self.current_function = self.parent_functions.pop().unwrap();
     }
 
     pub fn new<'a>(code: &'a String, resolver: &'a mut Resolver) -> Compiler<'a> {
@@ -646,7 +650,8 @@ impl Compiler<'_> {
             scanner,
             tokens,
             functions,
-            function_depth: 0,
+            current_function: 0,
+            parent_functions: Vec::new(),
             resolver,
             had_error: false,
             panic_mode: false,

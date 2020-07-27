@@ -1,0 +1,9 @@
+var global;
+
+fun test() {
+    global = "init";
+}
+
+print global;
+test();
+print global;

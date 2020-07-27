@@ -61,6 +61,14 @@ fn run_file(filename: &String) -> InterpretResult {
 }
 
 fn interpret(source: &String) -> InterpretResult {
+    // Debug thing: Dump tokens
+    // let mut temp_scanner = crate::scanner::Scanner::new(source);
+    // let mut x = temp_scanner.scan_token();
+    // while !(x.token_type == crate::scanner::TokenType::TokenEOF) {
+    //     println!("{:?}",x);
+    //     x = temp_scanner.scan_token();
+    // }
+
     let mut resolver = Resolver::new();
     let compiler = Compiler::new(source, &mut resolver);
     let result = compiler.compile();

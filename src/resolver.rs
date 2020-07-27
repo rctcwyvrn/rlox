@@ -13,11 +13,13 @@ pub struct Resolver {
 /// Used by Resolver to generate simple functions that just call the same function on the ResolverNode on the top of the stack
 macro_rules! delegate_to_latest {
     ($fn_name: ident, $ret: ty) => {
+        /// Calls this function on the currrent ResolverNode
         pub fn $fn_name(&mut self) -> $ret {
             self.current_node().$fn_name()
         }
     };
     ($fn_name: ident, $ret: ty, $param: ty) => {
+        /// Calls this function on the currrent ResolverNode
         pub fn $fn_name(&mut self, x: $param) -> $ret {
             self.current_node().$fn_name(x)
         }
@@ -42,7 +44,7 @@ impl Resolver {
     /// Returns the index of the UpValue in the upvalues Vec
     pub fn resolve_upvalue(&mut self, name: &str) -> Option<usize> {
         let n = self.stack.len();
-        if n >= 2 {
+        if n >= 3 { // Depth must be 3, global scope -> function scope -> internal scope (the first place we can have upvalues)
             self.recursive_resolve(name, n-1)
         } else {
             None
@@ -91,11 +93,7 @@ impl Resolver {
         self.stack.push(new);
     }
 
-    /// !! FIXME !! THIS IS TEMPORARY !!
-    /// 
-    /// Yeet off the old ResolverNodes
-    /// I'm sure I'll need to change this later to actually keep the values and have an usize struct var to keep track of the current ResolverNode
-    /// But whatever I want to see if this shit works
+    /// Remove the latest ResolverNode and return the UpValues resolved in that scope
     pub fn pop(&mut self) -> Vec<UpValue> {
         let latest = self.stack.pop().unwrap(); // Fixme: make this not panic?
         latest.upvalues
@@ -103,7 +101,7 @@ impl Resolver {
 
     pub fn new() -> Resolver {
         let mut locals = Vec::new();
-        locals.push(Local {             // Placeholder local variable for VM use -> Will be filled by the top level function
+        locals.push(Local {             // Placeholder local variable for VM use -> Will be filled by the corresponding LoxFunction for the CallFrame
             name: String::from(""),
             depth: None,
         });

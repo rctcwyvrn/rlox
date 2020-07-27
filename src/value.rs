@@ -6,7 +6,9 @@ use crate::native::NativeFn;
 #[derive(Debug, Clone, PartialEq)]
 pub struct ObjClosure {
     pub function: usize, 
-    pub values: Vec<Value>, // Will be filled at runtime with captured upvalues
+    pub values: Vec<Value>, // Will be filled at runtime
+
+    // pub values: Vec<usize>, // Will be filled at runtime with indexes of the captured upvalues in the VM upvalues Vec
 }
 
 impl ObjClosure {

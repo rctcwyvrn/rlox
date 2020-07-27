@@ -93,7 +93,7 @@ pub struct FunctionChunk {
     pub name: Option<String>, // None for the top level script
     pub arity: usize,
     pub fn_type: FunctionType,
-    pub upvalues: Option<Vec<UpValue>>, // None while the function is being defined/for the top level script, must be set to Some after the definition is complete otherwise
+    pub upvalues: Option<Vec<UpValue>>, // None while the function is being defined/for the top level script, must be set to Some after the definition is complete
 }
 
 impl FunctionChunk {

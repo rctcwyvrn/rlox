@@ -25,17 +25,21 @@ pub enum ExecutionMode {
 // Mutable VM state: stack, frames, ip within the frames, globals <-- this struct should be built in run and mutated in there
 // Immutable VM values: mode, function chunks (code + constants) <-- this struct should be passed from the compiler as an immutable reference
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct CallFrame {
+    name: String,
     function: usize, // Index into the VM.functions Vec for which function is being called
     ip: usize,
     frame_start: usize,
 }
 
-struct VMState {
+pub struct VMState {
     stack: Vec<Value>,
     frames: Vec<CallFrame>,
     globals: HashMap<String, Value>,
+
+    // Not implemented due to it destryoing my code
+    //upvalues: Vec<Value>, // This really really REALLY needs to get garbage collected: Every SINGLE closed over value will be just pushed onto here
 }
 
 impl VMState {
@@ -164,9 +168,10 @@ impl VMState {
         }
 
         let frame = CallFrame {
+            name: target_fn.name.clone().unwrap_or(String::from("main")),
             function: fn_index,
             ip: 0,
-            frame_start: self.stack.len() - arg_count - 1
+            frame_start: self.stack.len() - arg_count - 1,
         };
         self.frames.push(frame);
         return None;
@@ -196,18 +201,6 @@ impl VMState {
         self.define_native(String::from("test_native"), test_native);
     }
 
-    fn debug_trace(&self) {
-        println!("> Frame:\t\t{:?}", self.frame());
-        println!("> Stack: ");
-        for value in &self.stack {
-            println!(">> [ {:?} ]", value);
-        }
-        println!("> Globals: ");
-        for (name, val) in self.globals.iter() {
-            println!(">> {} => {:?}", name, val);
-        }
-    }
-
     /// Initializes the VMState with:
     /// 
     /// - A CallFrame for function #0
@@ -215,6 +208,7 @@ impl VMState {
     /// - A Value::LoxFunction for function #0 pushed onto the stack
     fn new() -> VMState {
         let first_fn = CallFrame {
+            name: String::from("main"),
             function: 0,
             ip: 0,
             frame_start: 0,
@@ -255,31 +249,6 @@ impl VM {
         }
     }
 
-    fn debug_trace(&self, instr: &Instr, state: &VMState) {
-        println!("---");
-        print!("> Next instr (#{}): ", state.frame().ip - 1);
-        disassemble_instruction(instr, &self.get_chunk(state).chunk, state.frame().ip - 1);
-        state.debug_trace();
-        println!("---\n");
-    }
-
-    fn debug_print_constants(&self) {
-        println!("---");
-        println!("> Constants");
-        for fn_chunk in self.functions.iter(){
-            let name = if let Some(fn_name) = &fn_chunk.name {
-                fn_name.clone()
-            } else {
-                String::from("script")
-            };
-            println!(">>> {}", name);
-            for val in fn_chunk.chunk.constants.iter() {
-                println!(">> [ {:?} ]", val);
-            }
-        }
-        println!("---\n");
-    }
-
     fn runtime_error(&self, msg: &str, state: &VMState) {
         eprintln!("{}", msg);
         for call_frame in state.frames.iter().rev() {
@@ -310,8 +279,8 @@ impl VM {
 
     pub fn run(&self) -> InterpretResult {
         if let ExecutionMode::Trace = self.mode {
-            println!("== Starting execution | Mode: {:?} ==", self.mode);
-            self.debug_print_constants();
+            eprintln!("== Starting execution | Mode: {:?} ==", self.mode);
+            debug_print_constants(&self);
         }
 
         let mut state = VMState::new();
@@ -342,7 +311,7 @@ impl VM {
             state.increment_ip();
 
             if let ExecutionMode::Trace = self.mode {
-                self.debug_trace(&instr, &state);
+                debug_trace(&self, &instr, &state);
             }
 
             match instr.op_code {
@@ -402,6 +371,7 @@ impl VM {
 
                 OpCode::OpGetUpvalue(index) => { state.push_upvalue(index); },
                 OpCode::OpSetUpvalue(index) => { state.set_upvalue(index); },
+
                 OpCode::OpClosure => {
                     if let Value::LoxFunction(function) = state.pop() {
                         let mut closure = ObjClosure::new(function); // Capture values into the closure here
@@ -445,7 +415,7 @@ impl VM {
                     } else if let (Value::Double(a), Value::Double(b)) = t {
                         state.push(Value::Double(a + b))
                     } else {
-                        self.runtime_error("Operands must be numbers", &state);
+                        self.runtime_error("Operands must be numbers or strings", &state);
                         return InterpretResult::InterpretRuntimeError;
                     }
                 },
@@ -480,4 +450,42 @@ impl VM {
             }
         }
     }
+}
+
+fn debug_state_trace(state: &VMState) {
+    eprintln!("> Frame: {:?}", state.frame());
+    eprintln!("> Stack: ");
+    for value in &state.stack {
+        eprintln!(">> [ {:?} ]", value);
+    }
+    eprintln!("> Globals: ");
+    for (name, val) in state.globals.iter() {
+        eprintln!(">> {} => {:?}", name, val);
+    }
+}
+
+
+fn debug_trace(vm: &VM, instr: &Instr, state: &VMState) {
+    eprintln!("---");
+    eprint!("> Next instr (#{}): ", state.frame().ip - 1);
+    disassemble_instruction(instr, &vm.get_chunk(state).chunk, state.frame().ip - 1);
+    debug_state_trace(state);
+    eprintln!("---\n");
+}
+
+fn debug_print_constants(vm: &VM) {
+    eprintln!("---");
+    eprintln!("> Constants");
+    for fn_chunk in vm.functions.iter(){
+        let name = if let Some(fn_name) = &fn_chunk.name {
+            fn_name.clone()
+        } else {
+            String::from("script")
+        };
+        eprintln!(">>> {}", name);
+        for val in fn_chunk.chunk.constants.iter() {
+            eprintln!(">> [ {:?} ]", val);
+        }
+    }
+    eprintln!("---\n");
 }

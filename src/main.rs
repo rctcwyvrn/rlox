@@ -9,8 +9,9 @@ mod native;
 mod resolver;
 
 use crate::vm::{VM, ExecutionMode, InterpretResult};
-use crate::compiler::{Compiler, DEBUG};
+use crate::compiler::{Compiler};
 use crate::resolver::{Resolver};
+use crate::debug::DEBUG;
 
 use std::env;
 use std::io;

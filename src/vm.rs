@@ -1,6 +1,6 @@
 use crate::chunk::{OpCode, Instr, FunctionChunk};
 use crate::debug::*;
-use crate::value::{Value, ObjClosure, ObjClass, ObjInstance, is_falsey, values_equal};
+use crate::value::{Value, ObjClosure, ObjClass, ObjInstance, ObjPointer, is_falsey, values_equal};
 use crate::native::*;
 use crate::resolver::UpValue;
 
@@ -37,9 +37,9 @@ pub struct VMState {
     stack: Vec<Value>,
     frames: Vec<CallFrame>,
     globals: HashMap<String, Value>,
-
-    // Not implemented due to it destryoing my code
-    //upvalues: Vec<Value>, // This really really REALLY needs to get garbage collected: Every SINGLE closed over value will be just pushed onto here
+    instances: Vec<ObjInstance>,
+    // Not implemented due to it destryoing my code => multiple upvalues pointing to the same original value in a function will NOT affect each other. This is a small enough edge case that I'm willing to just let it go
+    // upvalues: Vec<Value>, 
 }
 
 impl VMState {
@@ -54,21 +54,15 @@ impl VMState {
         }
     }
 
+    // Note to future self: peek_mut SHOULD NEVER BE IMPLEMENTED! 
+    // Values on the stack are always implicit copy/cloned, any persistent values must be ObjInstances on the instances vec with LoxPointers instead
+
     fn peek(&self) -> &Value {
         self.peek_at(0)
     }
 
-    fn peek_mut(&mut self) -> &mut Value {
-        self.peek_at_mut(0)
-    }
-
     fn peek_at(&self, dist: usize) -> &Value {
         self.stack.get(self.stack.len() - dist - 1).unwrap()
-    }
-
-    fn peek_at_mut(&mut self, dist: usize) -> &mut Value {
-        let index = self.stack.len() - dist - 1;
-        self.stack.get_mut(index).unwrap()
     }
 
     fn frame(&self) -> &CallFrame {
@@ -166,7 +160,16 @@ impl VMState {
             // No constructors for now, just put on the instance
             if arg_count != 0 { panic!("constructor arguments not implemented yet")};
 
-            self.push(Value::LoxInstance(ObjInstance::new(class)));
+            // self.push(Value::LoxInstance(ObjInstance::new(class)));
+            self.pop(); // LoxClass
+            let index = self.instances.len();
+            self.instances.push(ObjInstance::new(class)); // FIXME: Replace this with a walking instantiation once garbage collection is added!!
+            self.push(Value::LoxPointer(ObjPointer {obj: index}));
+
+            // The problem: 
+            // Once gc is added the instances vec is gonna shrink at random times, meaning the LoxPointers will get shifted around
+            // This means that we need to replace the values in the vec with placeholder values
+            // So the "malloc" for self.instances will need to walk along and place values in properly
             None
         } else {
             Some(String::from("Can only call functions and classses"))
@@ -242,6 +245,7 @@ impl VMState {
             stack,
             frames,
             globals: HashMap::new(),
+            instances: Vec::new(),
         };
 
         state.define_std_lib();
@@ -388,30 +392,40 @@ impl VM {
 
                 OpCode::OpGetProperty(index) => {
                     let name = self.get_variable_name(index, &state);
-                    let instance_val = state.peek();
-                    if let Value::LoxInstance(instance) = instance_val {
-                        if instance.fields.contains_key(&name) {
-                            let value = instance.fields.get(&name).unwrap().clone();
-                            state.pop(); // Remove the instance
-                            state.push(value); // Replace with the value
-                        } else {
-                            self.runtime_error(format!("Undefined property {} found in {}", name, instance_val.to_string(&self)).as_str(), &state);
-                            return InterpretResult::InterpretRuntimeError;
+                    let pointer_val = state.peek();
+
+                    if let Value::LoxPointer(pointer) = pointer_val {
+                        match state.instances.get(pointer.obj) {
+                            Some(instance) => {
+                                if instance.fields.contains_key(&name) {
+                                    let value = instance.fields.get(&name).unwrap().clone();
+                                    state.pop(); // Remove the instance
+                                    state.push(value); // Replace with the value
+                                } else {
+                                    self.runtime_error(format!("Undefined property {} found in {:?}", name, instance).as_str(), &state);
+                                    return InterpretResult::InterpretRuntimeError;
+                                }
+                            }
+                            None => panic!("VM panic! Invalid pointer"),
                         }
                     } else {
-                        self.runtime_error(format!("Only class instances can access properties with '.' Found {} instead", instance_val.to_string(&self)).as_str(), &state);
+                        self.runtime_error(format!("Only class instances can access properties with '.' Found {} instead", pointer_val.to_string(&self)).as_str(), &state);
                         return InterpretResult::InterpretRuntimeError;
                     }
                 },
                 OpCode::OpSetProperty(index) => { // Fixme: this is nearly identical to OpGetProperty, is there any way to combine them nicely?
                     let name = self.get_variable_name(index, &state);
                     let value = state.pop();
-                    let instance_val = state.peek_mut();
+                    let pointer_val = state.peek();
 
-                    if let Value::LoxInstance(instance) = instance_val {
-                        instance.fields.insert(name, value.clone());
+                    if let Value::LoxPointer(pointer) = pointer_val {
+                        let index = pointer.obj;
+                        match state.instances.get_mut(index) {
+                            Some(instance) => { instance.fields.insert(name, value.clone()); },
+                            None => panic!("VM panic! Invalid pointer"),
+                        }
                     } else {
-                        self.runtime_error(format!("Only class instances can access properties with '.' Found {} instead", instance_val.to_string(&self)).as_str(), &state);
+                        self.runtime_error(format!("Only class instances can access properties with '.' Found {} instead", pointer_val.to_string(&self)).as_str(), &state);
                         return InterpretResult::InterpretRuntimeError;
                     }
 
@@ -454,8 +468,8 @@ impl VM {
                     }
                 },
 
-                OpCode::OpClass(index) => {
-                    let name = self.get_variable_name(index, &state); // move class name stuff to compile time and pass it along
+                OpCode::OpClass(_index) => {
+                    //let name = self.get_variable_name(index, &state); // move class name stuff to compile time and pass it along
                     let class = ObjClass {
                         class: 0,
                         // name: name.clone(),  I feel like im gonna do something like FunctionChunks for this so I'm gonna omit this for now

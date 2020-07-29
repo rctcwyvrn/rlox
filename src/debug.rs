@@ -1,6 +1,8 @@
 use crate::chunk::{Chunk, Instr, OpCode};
 use crate::value::Value;
 
+pub const DEBUG: bool = false;
+
 pub fn disassemble_chunk(chunk: &Chunk, name: &Option<String>) {
     match name {
         Some(name) => eprintln!("== <fn {}> ==============", name),

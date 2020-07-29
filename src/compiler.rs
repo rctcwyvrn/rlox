@@ -2,10 +2,8 @@ use crate::scanner::{Scanner, Token, TokenType};
 use crate::chunk::{OpCode, Instr, Chunk, FunctionChunk, FunctionType};
 use crate::value::Value;
 use crate::prec::{Precedence, ParseFn, get_rule};
-use crate::debug::disassemble_chunk;
+use crate::debug::{DEBUG, disassemble_chunk};
 use crate::resolver::{Resolver};
-
-pub const DEBUG: bool = true;
 
 #[derive(Debug)]
 pub struct Compiler<'a> {

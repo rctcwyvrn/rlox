@@ -13,22 +13,24 @@ pub enum Value {
     LoxClosure(ObjClosure),
     NativeFunction(NativeFn),
     LoxClass(ObjClass),
-    LoxInstance(ObjInstance),
+    // LoxInstance(ObjInstance), // Removed because all instances are just stored as ObjInstances. Things in Value should be cloneable and be valid on the stack
+    LoxPointer(ObjPointer),
 }
 
 impl Value {
     /// Used for print statements, use {:?} debug formatting for trace and stack examining
     pub fn to_string(&self, vm: &VM) -> String {
         match self {
-            Value::Double(x) =>             format!("{}",x),
-            Value::Bool(x) =>               format!("{}",x),
-            Value::LoxString(x) =>          format!("{}",x),
-            Value::Nil =>                   String::from("Nil"),
-            Value::LoxFunction(x) =>        format!("<fn {}>", vm.functions.get(*x).unwrap().name.as_ref().unwrap()),
-            Value::NativeFunction(x) =>     format!("<native_fn {:?}>", x),
-            Value::LoxClosure(closure) =>   format!("<fn {} | {:?}>", vm.functions.get(closure.function).unwrap().name.as_ref().unwrap(), closure),
-            Value::LoxClass(class) =>       format!("<class {}>", class.class),
-            Value::LoxInstance(instance) => format!("<instance {}>", instance.class),
+            Value::Double(x)                => format!("{}",x),
+            Value::Bool(x)                  => format!("{}",x),
+            Value::LoxString(x)             => format!("{}",x),
+            Value::Nil                      => String::from("Nil"),
+            Value::LoxFunction(x)           => format!("<fn {}>", vm.functions.get(*x).unwrap().name.as_ref().unwrap()),
+            Value::NativeFunction(x)        => format!("<native_fn {:?}>", x),
+            Value::LoxClosure(closure)      => format!("<fn {} | {:?}>", vm.functions.get(closure.function).unwrap().name.as_ref().unwrap(), closure),
+            Value::LoxClass(class)          => format!("<class {}>", class.class),
+            // Value::LoxInstance(instance)    => format!("<instance {}>", instance.class),
+            Value::LoxPointer(pointer)      => format!("<pointer {:04}>", pointer.obj),
         }
     }
 
@@ -85,7 +87,7 @@ pub struct ObjClass {
 }
 
 /// Runtime instantiation of class definitions
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct ObjInstance {
     pub class: usize,
     pub fields: HashMap<String,Value>, // Possible improvement: Resolve all the field references at compile time and replace this with just a Vec
@@ -95,4 +97,10 @@ impl ObjInstance {
     pub fn new(class: usize) -> ObjInstance {
         ObjInstance { class, fields: HashMap::new() }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ObjPointer {
+    pub obj: usize,
+    //pub is_marked: bool,
 }

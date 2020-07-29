@@ -6,12 +6,16 @@ pub enum OpCode {
     OpReturn,
     OpPop,
     
-    OpDefineGlobal(usize), // Index of the LoxString variable name in the constants vec
+    OpDefineGlobal(usize), // Index of the LoxString name for this variable name in the constants vec
     OpGetGlobal(usize), // ^
     OpSetGlobal(usize), // ^
     
     OpGetLocal(usize), // Index on the stack
     OpSetLocal(usize), // ^
+
+    OpGetProperty(usize), // Index of the LoxString variable in the constants vec corresponding with the property name
+    OpSetProperty(usize), // ^
+                          // Optimization todo: Fix this LoxString storing in the constants vec. Either only save one, or get rid of it entierly by resolving the globals/instance slot at compilation
 
     OpGetUpvalue(usize), // upvalue index for a closure
     OpSetUpvalue(usize), // ^
@@ -22,6 +26,8 @@ pub enum OpCode {
     OpLoop(usize), // Jump backwards by offset
 
     OpCall(usize), // Arity
+
+    OpClass(usize), // Index in the constants vec for the class name => temp: replace this with the index into a vec of functionchunk like objects
 
     OpConstant(usize), // Index of the constant we want to retrieve
     OpNil,

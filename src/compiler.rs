@@ -87,7 +87,7 @@ impl Compiler<'_> {
             _ => eprint!(" at '{}'", token.lexemme)
         }
 
-        println!(": {}", message);
+        eprintln!(": {}", message);
 
         self.had_error = true;
         self.panic_mode = true;
@@ -229,12 +229,15 @@ impl Compiler<'_> {
             ParseFn::And        => self.and_operator(),
             ParseFn::Or         => self.or_operator(),
             ParseFn::Call       => self.call(),
+            ParseFn::Dot        => self.dot(can_assign),
         }
     }
 
     fn declaration(&mut self) {
         if self.match_cur(TokenType::TokenFun) {
             self.fun_declaration();
+        } else if self.match_cur(TokenType::TokenClass) {
+            self.class_declaration();
         } else if self.match_cur(TokenType::TokenVar) {
             self.var_declaration();
         } else {
@@ -248,6 +251,19 @@ impl Compiler<'_> {
         self.resolver.mark_initialized(); // Initialize the function object if we are in a local scope
         self.function(FunctionType::Function);
         self.define_variable(global); // Emit the define instr if we are in the global scope
+    }
+
+    fn class_declaration(&mut self) {
+        self.consume(TokenType::TokenIdentifier, "Expected class name after keyword 'class'");
+        let name = self.previous().lexemme.clone();
+        let name_index = self.identifier_constant(&name);
+        self.declare_variable();
+
+        self.emit_instr(OpCode::OpClass(name_index));
+        self.define_variable(name_index);
+
+        self.consume(TokenType::TokenLeftBrace, "Expected '{' before class body");
+        self.consume(TokenType::TokenRightBrace, "Expected '}' after class body");
     }
 
     // Note: Since this constantly confuses me, I'm gonna keep a note here so that I don't forget how variables work in rlox
@@ -613,6 +629,19 @@ impl Compiler<'_> {
         }
         self.consume(TokenType::TokenRightParen, "Expected ')' after function argument list");
         arg_count
+    }
+
+    fn dot(&mut self, can_assign: bool) {
+        self.consume(TokenType::TokenIdentifier, "Expected property name after '.'");
+        let name_index = self.identifier_constant(&self.previous().lexemme.clone());
+        
+        if can_assign && self.match_cur(TokenType::TokenEqual) { // We check can_assign so that a + b.c = 3 does not invalidly emit a set op
+            // Setter
+            self.expression();
+            self.emit_instr(OpCode::OpSetProperty(name_index));
+        } else {
+            self.emit_instr(OpCode::OpGetProperty(name_index));
+        }
     }
 
     /// Sets the compiler to generate a new function chunk for the next segment of code

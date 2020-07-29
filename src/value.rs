@@ -1,21 +1,7 @@
 use crate::vm::VM;
 use crate::native::NativeFn;
 
-
-/// Runtime representation of the closure, ie what variables are in scope
-#[derive(Debug, Clone, PartialEq)]
-pub struct ObjClosure {
-    pub function: usize, 
-    pub values: Vec<Value>, // Will be filled at runtime
-
-    // pub values: Vec<usize>, // Will be filled at runtime with indexes of the captured upvalues in the VM upvalues Vec
-}
-
-impl ObjClosure {
-    pub fn new(function: usize) -> ObjClosure {
-        ObjClosure { function, values: Vec::new() }
-    }
-}
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -26,19 +12,23 @@ pub enum Value {
     LoxFunction(usize), // Index of the function in the functions Vec in VM
     LoxClosure(ObjClosure),
     NativeFunction(NativeFn),
+    LoxClass(ObjClass),
+    LoxInstance(ObjInstance),
 }
 
 impl Value {
     /// Used for print statements, use {:?} debug formatting for trace and stack examining
     pub fn to_string(&self, vm: &VM) -> String {
         match self {
-            Value::Double(x) => format!("{}",x),
-            Value::Bool(x) => format!("{}",x),
-            Value::LoxString(x) => format!("{}",x),
-            Value::Nil => String::from("Nil"),
-            Value::LoxFunction(x) => format!("<fn {}>", vm.functions.get(*x).unwrap().name.as_ref().unwrap()),
-            Value::NativeFunction(x) => format!("<native_fn {:?}>", x),
-            Value::LoxClosure(closure) => format!("<fn {} | {:?}>", vm.functions.get(closure.function).unwrap().name.as_ref().unwrap(), closure),
+            Value::Double(x) =>             format!("{}",x),
+            Value::Bool(x) =>               format!("{}",x),
+            Value::LoxString(x) =>          format!("{}",x),
+            Value::Nil =>                   String::from("Nil"),
+            Value::LoxFunction(x) =>        format!("<fn {}>", vm.functions.get(*x).unwrap().name.as_ref().unwrap()),
+            Value::NativeFunction(x) =>     format!("<native_fn {:?}>", x),
+            Value::LoxClosure(closure) =>   format!("<fn {} | {:?}>", vm.functions.get(closure.function).unwrap().name.as_ref().unwrap(), closure),
+            Value::LoxClass(class) =>       format!("<class {}>", class.class),
+            Value::LoxInstance(instance) => format!("<instance {}>", instance.class),
         }
     }
 
@@ -71,4 +61,38 @@ pub fn values_equal(t: (Value, Value)) -> bool {
     }
 
     return false;
+}
+
+/// Runtime representation of the closure, ie what variables are in scope
+#[derive(Debug, Clone, PartialEq)]
+pub struct ObjClosure {
+    pub function: usize, 
+    pub values: Vec<Value>, // Will be filled at runtime
+
+    // pub values: Vec<usize>, // Will be filled at runtime with indexes of the captured upvalues in the VM upvalues Vec
+}
+
+impl ObjClosure {
+    pub fn new(function: usize) -> ObjClosure {
+        ObjClosure { function, values: Vec::new() }
+    }
+}
+
+/// Runtime representation of the class definition
+#[derive(Debug, Clone, PartialEq)]
+pub struct ObjClass {
+    pub class: usize,
+}
+
+/// Runtime instantiation of class definitions
+#[derive(Debug, Clone, PartialEq)]
+pub struct ObjInstance {
+    pub class: usize,
+    pub fields: HashMap<String,Value>, // Possible improvement: Resolve all the field references at compile time and replace this with just a Vec
+}
+
+impl ObjInstance {
+    pub fn new(class: usize) -> ObjInstance {
+        ObjInstance { class, fields: HashMap::new() }
+    }
 }

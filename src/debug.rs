@@ -28,7 +28,8 @@ pub fn disassemble_instruction(instr: &Instr, chunk: &Chunk, instr_offset: usize
         OpCode::OpConstant(index) => eprintln!("\t{:?} => {:?}", instr.op_code, chunk.constants.get(index).unwrap()), 
         OpCode::OpDefineGlobal(index) | 
             OpCode::OpSetGlobal(index) |
-            OpCode::OpGetGlobal(index) => {
+            OpCode::OpGetGlobal(index) |
+            OpCode::OpClass(index) => {
                 if let Value::LoxString(name) = chunk.constants.get(index).unwrap() {
                     eprintln!("\t{:?} => name: {:?}", instr.op_code, name)
                 }

@@ -2,7 +2,6 @@ use crate::scanner::TokenType;
 
 // Please forgive me for my sins, do not read this file :c 
 
-
 #[derive(Debug, PartialEq, PartialOrd)]
 pub enum Precedence {
     PrecNone,
@@ -30,6 +29,7 @@ pub enum ParseFn {
     And,
     Or,
     Call,
+    Dot,
 }
 
 pub struct ParseRule {
@@ -176,6 +176,11 @@ const PARSE_RULE_OR: ParseRule = ParseRule {
     infix: ParseFn::Or,
     precedence: Precedence::PrecOr
 };
+const PARSE_RULE_DOT: ParseRule = ParseRule {
+    prefix: ParseFn::None,
+    infix: ParseFn::Dot,
+    precedence: Precedence::PrecCall
+};
 
 pub fn get_rule(operator: TokenType) -> ParseRule {
     match operator {
@@ -199,6 +204,7 @@ pub fn get_rule(operator: TokenType) -> ParseRule {
         TokenType::TokenIdentifier  => PARSE_RULE_ID,
         TokenType::TokenAnd         => PARSE_RULE_AND,
         TokenType::TokenOr          => PARSE_RULE_OR,
+        TokenType::TokenDot         => PARSE_RULE_DOT,
         _                           => PARSE_RULE_NONE
     }
 }

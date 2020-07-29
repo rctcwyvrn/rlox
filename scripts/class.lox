@@ -1,0 +1,7 @@
+class Void {}
+print("my beautiful cat bebby");
+print Void;
+var void = Void();
+print void;
+void.precious = "yes";
+print void.precious();

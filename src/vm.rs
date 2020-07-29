@@ -1,6 +1,6 @@
 use crate::chunk::{OpCode, Instr, FunctionChunk};
 use crate::debug::*;
-use crate::value::{Value, ObjClosure, is_falsey, values_equal};
+use crate::value::{Value, ObjClosure, ObjClass, ObjInstance, is_falsey, values_equal};
 use crate::native::*;
 use crate::resolver::UpValue;
 
@@ -55,11 +55,20 @@ impl VMState {
     }
 
     fn peek(&self) -> &Value {
-        self.stack.last().unwrap()
+        self.peek_at(0)
+    }
+
+    fn peek_mut(&mut self) -> &mut Value {
+        self.peek_at_mut(0)
     }
 
     fn peek_at(&self, dist: usize) -> &Value {
         self.stack.get(self.stack.len() - dist - 1).unwrap()
+    }
+
+    fn peek_at_mut(&mut self, dist: usize) -> &mut Value {
+        let index = self.stack.len() - dist - 1;
+        self.stack.get_mut(index).unwrap()
     }
 
     fn frame(&self) -> &CallFrame {
@@ -145,11 +154,19 @@ impl VMState {
         if let Value::LoxClosure(closure) = callee {
             let fn_index = closure.function;
             self.call(fn_index, arg_count, function_defs)
-        } else if let Value::LoxFunction(_fn_index) =  callee {
-            panic!("VM panic! Tried to call a LoxFunction that was not wrapped in a LoxClosure?");
+        } else if let Value::LoxFunction(_fn_index) = callee {
+            panic!("VM panic! Tried to call a LoxFunction that was not wrapped in a LoxClosure? How did this happen?");
         } else if let Value::NativeFunction(native_fn) = callee {
             let native_fn = native_fn.clone();
             self.call_native(&native_fn, arg_count);
+            None
+        } else if let Value::LoxClass(class) = callee {
+            let class = class.class;
+
+            // No constructors for now, just put on the instance
+            if arg_count != 0 { panic!("constructor arguments not implemented yet")};
+
+            self.push(Value::LoxInstance(ObjInstance::new(class)));
             None
         } else {
             Some(String::from("Can only call functions and classses"))
@@ -345,7 +362,7 @@ impl VM {
                             state.push(new)
                         },
                         None => {
-                            self.runtime_error(&format!("Undefined variable '{}'", var_name)[..], &state);
+                            self.runtime_error(format!("Undefined variable '{}'", var_name).as_str(), &state);
                             return InterpretResult::InterpretRuntimeError;
                         },
                     }
@@ -357,7 +374,7 @@ impl VM {
                     // this will almost always be in a expression statement, which will pop the value
                     let var_val = state.peek().clone();
                     if !state.globals.contains_key(&var_name) {
-                        self.runtime_error(&format!("Undefined variable '{}'", var_name)[..], &state);
+                        self.runtime_error(format!("Undefined variable '{}'", var_name).as_str(), &state);
                         return InterpretResult::InterpretRuntimeError
                     } else {
                         state.globals.insert(var_name, var_val);
@@ -367,6 +384,40 @@ impl VM {
                 OpCode::OpSetLocal(index) => {
                     let dest = state.frame_start() + index;
                     state.stack[dest] = state.peek().clone(); // Same idea as OpSetGlobal, don't pop value since it's an expression
+                },
+
+                OpCode::OpGetProperty(index) => {
+                    let name = self.get_variable_name(index, &state);
+                    let instance_val = state.peek();
+                    if let Value::LoxInstance(instance) = instance_val {
+                        if instance.fields.contains_key(&name) {
+                            let value = instance.fields.get(&name).unwrap().clone();
+                            state.pop(); // Remove the instance
+                            state.push(value); // Replace with the value
+                        } else {
+                            self.runtime_error(format!("Undefined property {} found in {}", name, instance_val.to_string(&self)).as_str(), &state);
+                            return InterpretResult::InterpretRuntimeError;
+                        }
+                    } else {
+                        self.runtime_error(format!("Only class instances can access properties with '.' Found {} instead", instance_val.to_string(&self)).as_str(), &state);
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+                },
+                OpCode::OpSetProperty(index) => { // Fixme: this is nearly identical to OpGetProperty, is there any way to combine them nicely?
+                    let name = self.get_variable_name(index, &state);
+                    let value = state.pop();
+                    let instance_val = state.peek_mut();
+
+                    if let Value::LoxInstance(instance) = instance_val {
+                        instance.fields.insert(name, value.clone());
+                    } else {
+                        self.runtime_error(format!("Only class instances can access properties with '.' Found {} instead", instance_val.to_string(&self)).as_str(), &state);
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+
+                    // All other cases return, so we must have succeeded, clean up the stack now
+                    state.pop(); // Instance
+                    state.push(value); // Return the value to the stack
                 },
 
                 OpCode::OpGetUpvalue(index) => { state.push_upvalue(index); },
@@ -402,6 +453,15 @@ impl VM {
                         return InterpretResult::InterpretRuntimeError; 
                     }
                 },
+
+                OpCode::OpClass(index) => {
+                    let name = self.get_variable_name(index, &state); // move class name stuff to compile time and pass it along
+                    let class = ObjClass {
+                        class: 0,
+                        // name: name.clone(),  I feel like im gonna do something like FunctionChunks for this so I'm gonna omit this for now
+                    };
+                    state.push(Value::LoxClass(class));
+                }
 
                 OpCode::OpConstant(index) => state.push(self.get_chunk(&state).chunk.get_constant(index)), // FIXME
                 OpCode::OpTrue            => state.push(Value::Bool(true)),

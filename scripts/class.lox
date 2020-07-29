@@ -9,3 +9,4 @@ print void;
 void.precious = "yes";
 print("is he precious??");
 print void.precious;
+print void;

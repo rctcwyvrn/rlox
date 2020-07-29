@@ -1,7 +1,7 @@
 use crate::chunk::{Chunk, Instr, OpCode};
 use crate::value::Value;
 
-pub const DEBUG: bool = false;
+pub const DEBUG: bool = true;
 
 pub fn disassemble_chunk(chunk: &Chunk, name: &Option<String>) {
     match name {

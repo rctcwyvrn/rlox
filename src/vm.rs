@@ -1,6 +1,6 @@
 use crate::chunk::{OpCode, Instr, FunctionChunk};
 use crate::debug::*;
-use crate::value::{Value, ObjClosure, ObjClass, ObjInstance, ObjPointer, is_falsey, values_equal};
+use crate::value::{Value, HeapObj, HeapObjVal, HeapObjType,  ObjClosure, ObjInstance, ObjPointer, is_falsey, values_equal};
 use crate::native::*;
 use crate::resolver::UpValue;
 
@@ -21,6 +21,12 @@ pub enum ExecutionMode {
     Trace
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum DerefError {
+    NotPointer,
+    WrongType,
+}
+
 // Is it good rust to split these into two very coupled but seperate structs or is there a way to keep them together while not angering the borrow checker?
 // Mutable VM state: stack, frames, ip within the frames, globals <-- this struct should be built in run and mutated in there
 // Immutable VM values: mode, function chunks (code + constants) <-- this struct should be passed from the compiler as an immutable reference
@@ -37,7 +43,7 @@ pub struct VMState {
     stack: Vec<Value>,
     frames: Vec<CallFrame>,
     globals: HashMap<String, Value>,
-    instances: Vec<ObjInstance>,
+    pub instances: Vec<HeapObj>,
     // Not implemented due to it destryoing my code => multiple upvalues pointing to the same original value in a function will NOT affect each other. This is a small enough edge case that I'm willing to just let it go
     // upvalues: Vec<Value>, 
 }
@@ -65,6 +71,58 @@ impl VMState {
         self.stack.get(self.stack.len() - dist - 1).unwrap()
     }
 
+    /// FIXME: Replace this with a walking instantiation once garbage collection is added!!
+    fn alloc(&mut self, val: HeapObj) -> Value {
+        let index = self.instances.len();
+        self.instances.push(val);
+        Value::LoxPointer(ObjPointer { obj: index })
+    }
+
+    // Fixme: Figure out how to not copy paste this code for mut and immut
+    pub fn deref(&self, pointer: ObjPointer) -> &HeapObj {
+        match self.instances.get(pointer.obj) {
+            Some(x) => x,
+            None => panic!("VM panic! Invalid pointer"),
+        }
+    }
+
+    fn deref_mut(&mut self, pointer: ObjPointer) -> &mut HeapObj {
+        match self.instances.get_mut(pointer.obj) {
+            Some(x) => x,
+            None => panic!("VM panic! Invalid pointer"),
+        }
+    }
+
+    /// Attempts to
+    /// 1. Take the given Value as a LoxPointer
+    /// 2. Deref it into a HeapObj
+    /// 3. Match the obj_types
+    fn deref_into(&self, pointer_val: &Value, obj_type: HeapObjType) -> Result<&HeapObjVal, DerefError> {
+        if let Value::LoxPointer(pointer) = pointer_val {
+            let obj = self.deref(*pointer);
+            if obj.obj_type == obj_type {
+                Ok(&obj.obj)
+            } else {
+                Err(DerefError::WrongType)
+            }
+        } else {
+            Err(DerefError::NotPointer)
+        }
+    }
+
+    fn deref_into_mut(&mut self, pointer_val: &Value, obj_type: HeapObjType) -> Result<&mut HeapObjVal, DerefError> {
+        if let Value::LoxPointer(pointer) = pointer_val {
+            let obj = self.deref_mut(*pointer);
+            if obj.obj_type == obj_type {
+                Ok(&mut obj.obj)
+            } else {
+                Err(DerefError::WrongType)
+            }
+        } else {
+            Err(DerefError::NotPointer)
+        }
+    }
+
     fn frame(&self) -> &CallFrame {
         match self.frames.last() {
             Some(x) => x,
@@ -85,21 +143,18 @@ impl VMState {
     }
 
     fn current_closure(&self) -> &ObjClosure {
-        let closure_val = self.stack.get(self.frame().frame_start).unwrap();
-        if let Value::LoxClosure(parent_closure) = closure_val {
-            &parent_closure
-        } else {
-            panic!("VM panic! I screwed up and the start of the stack frame isnt a closure please smite me")
+        let pointer_val = self.stack.get(self.frame().frame_start).unwrap();
+        match self.deref_into(pointer_val, HeapObjType::LoxClosure) {
+            Ok(closure_obj) => closure_obj.as_closure(),
+            Err(x) => panic!("VM panic! Unable to get current closure? {:?}", x),
         }
     }
 
     fn current_closure_mut(&mut self) -> &mut ObjClosure {
-        let frame_start = self.frame().frame_start;
-        let closure_val = self.stack.get_mut(frame_start).unwrap();
-        if let Value::LoxClosure(parent_closure) = closure_val {
-            parent_closure
-        } else {
-            panic!("VM panic! I screwed up and the start of the stack frame isnt a closure please smite me")
+        let pointer_val = self.stack.get(self.frame().frame_start).unwrap().clone();
+        match self.deref_into_mut(&pointer_val, HeapObjType::LoxClosure) {
+            Ok(closure_obj) => closure_obj.as_closure_mut(),
+            Err(x) => panic!("VM panic! Unable to get current closure? {:?}", x),
         }
     }
     
@@ -145,9 +200,15 @@ impl VMState {
     /// Returns a String containing an error message or None
     fn call_value(&mut self, arg_count: usize, function_defs: &Vec<FunctionChunk>) -> Option<String> {
         let callee = self.peek_at(arg_count);
-        if let Value::LoxClosure(closure) = callee {
-            let fn_index = closure.function;
-            self.call(fn_index, arg_count, function_defs)
+        if let Value::LoxPointer(_) = callee {
+            match self.deref_into(callee, HeapObjType::LoxClosure) {
+                Ok(closure) => {
+                    let closure = closure.as_closure();
+                    let fn_index = closure.function;
+                    self.call(fn_index, arg_count, function_defs)
+                },
+                Err(_) => Some(String::from("Can only call functions and classses")),
+            }
         } else if let Value::LoxFunction(_fn_index) = callee {
             panic!("VM panic! Tried to call a LoxFunction that was not wrapped in a LoxClosure? How did this happen?");
         } else if let Value::NativeFunction(native_fn) = callee {
@@ -155,16 +216,16 @@ impl VMState {
             self.call_native(&native_fn, arg_count);
             None
         } else if let Value::LoxClass(class) = callee {
-            let class = class.class;
+            //let class = class.class;
 
             // No constructors for now, just put on the instance
             if arg_count != 0 { panic!("constructor arguments not implemented yet")};
 
-            // self.push(Value::LoxInstance(ObjInstance::new(class)));
-            self.pop(); // LoxClass
-            let index = self.instances.len();
-            self.instances.push(ObjInstance::new(class)); // FIXME: Replace this with a walking instantiation once garbage collection is added!!
-            self.push(Value::LoxPointer(ObjPointer {obj: index}));
+            let instance_obj = ObjInstance::new(*class);
+            self.pop(); // Pop the LoxClass
+
+            let ptr = self.alloc(HeapObj::new_instance(instance_obj));
+            self.push(ptr);
 
             // The problem: 
             // Once gc is added the instances vec is gonna shrink at random times, meaning the LoxPointers will get shifted around
@@ -394,44 +455,45 @@ impl VM {
                     let name = self.get_variable_name(index, &state);
                     let pointer_val = state.peek();
 
-                    if let Value::LoxPointer(pointer) = pointer_val {
-                        match state.instances.get(pointer.obj) {
-                            Some(instance) => {
-                                if instance.fields.contains_key(&name) {
-                                    let value = instance.fields.get(&name).unwrap().clone();
-                                    state.pop(); // Remove the instance
-                                    state.push(value); // Replace with the value
-                                } else {
-                                    self.runtime_error(format!("Undefined property {} found in {:?}", name, instance).as_str(), &state);
-                                    return InterpretResult::InterpretRuntimeError;
-                                }
+                    match state.deref_into(pointer_val, HeapObjType::LoxInstance) {
+                        Ok(instance) => {
+                            let instance = instance.as_instance();
+                            if instance.fields.contains_key(&name) {
+                                let value = instance.fields.get(&name).unwrap().clone();
+                                state.pop(); // Remove the instance
+                                state.push(value); // Replace with the value
+                            } else {
+                                self.runtime_error(format!("Undefined property {} found in {:?}", name, instance).as_str(), &state);
+                                return InterpretResult::InterpretRuntimeError;
                             }
-                            None => panic!("VM panic! Invalid pointer"),
-                        }
-                    } else {
-                        self.runtime_error(format!("Only class instances can access properties with '.' Found {} instead", pointer_val.to_string(&self)).as_str(), &state);
-                        return InterpretResult::InterpretRuntimeError;
+                        },
+                        Err(_) => {
+                            let msg = format!("Only class instances can access properties with '.' Found {} instead", pointer_val.to_string(&self, &state));
+                            self.runtime_error(msg.as_str(), &state);
+                            return InterpretResult::InterpretRuntimeError;
+                        }, 
                     }
                 },
                 OpCode::OpSetProperty(index) => { // Fixme: this is nearly identical to OpGetProperty, is there any way to combine them nicely?
                     let name = self.get_variable_name(index, &state);
-                    let value = state.pop();
-                    let pointer_val = state.peek();
+                    let val = state.pop();
+                    let pointer_val = state.peek().clone();
 
-                    if let Value::LoxPointer(pointer) = pointer_val {
-                        let index = pointer.obj;
-                        match state.instances.get_mut(index) {
-                            Some(instance) => { instance.fields.insert(name, value.clone()); },
-                            None => panic!("VM panic! Invalid pointer"),
-                        }
-                    } else {
-                        self.runtime_error(format!("Only class instances can access properties with '.' Found {} instead", pointer_val.to_string(&self)).as_str(), &state);
-                        return InterpretResult::InterpretRuntimeError;
+                    match state.deref_into_mut(&pointer_val, HeapObjType::LoxInstance) {
+                        Ok(instance) => {
+                            let instance = instance.as_instance_mut();
+                            instance.fields.insert(name, val.clone());
+                        },
+                        Err(_) => {
+                            let msg = format!("Only class instances can access properties with '.' Found {} instead", pointer_val.to_string(&self, &state));
+                            self.runtime_error(msg.as_str(), &state);
+                            return InterpretResult::InterpretRuntimeError;
+                        }, 
                     }
 
-                    // All other cases return, so we must have succeeded, clean up the stack now
+                    // We return on an error, so we can clean up the stack now
                     state.pop(); // Instance
-                    state.push(value); // Return the value to the stack
+                    state.push(val); // Return the value to the stack
                 },
 
                 OpCode::OpGetUpvalue(index) => { state.push_upvalue(index); },
@@ -445,8 +507,8 @@ impl VM {
                         for upvalue in fn_chunk.upvalues.as_ref().unwrap().iter() {
                             closure.values.push(state.capture_upvalue(upvalue))
                         }
-
-                        state.push(Value::LoxClosure(closure));
+                        let ptr = state.alloc(HeapObj::new_closure(closure));
+                        state.push(ptr);
                     } else {
                         panic!("VM panic! Attempted to wrap a non-function value in a closure");
                     }
@@ -468,14 +530,7 @@ impl VM {
                     }
                 },
 
-                OpCode::OpClass(_index) => {
-                    //let name = self.get_variable_name(index, &state); // move class name stuff to compile time and pass it along
-                    let class = ObjClass {
-                        class: 0,
-                        // name: name.clone(),  I feel like im gonna do something like FunctionChunks for this so I'm gonna omit this for now
-                    };
-                    state.push(Value::LoxClass(class));
-                }
+                OpCode::OpClass(_index) => state.push(Value::LoxClass(0)),
 
                 OpCode::OpConstant(index) => state.push(self.get_chunk(&state).chunk.get_constant(index)), // FIXME
                 OpCode::OpTrue            => state.push(Value::Bool(true)),
@@ -519,7 +574,7 @@ impl VM {
                 },
 
                 OpCode::OpPrint => {
-                    println!("{}",state.pop().to_string(&self));
+                    println!("{}",state.pop().to_string(&self, &state));
                 }
             }
         }
@@ -529,15 +584,22 @@ impl VM {
 fn debug_state_trace(state: &VMState) {
     eprintln!("> Frame: {:?}", state.frame());
     eprintln!("> Stack: ");
-    for value in &state.stack {
+    for value in state.stack.iter() {
         eprintln!(">> [ {:?} ]", value);
     }
     eprintln!("> Globals: ");
     for (name, val) in state.globals.iter() {
         eprintln!(">> {} => {:?}", name, val);
     }
+    debug_instances(state);
 }
 
+fn debug_instances(state: &VMState) {
+    eprintln!("> Instances: ");
+    for (i,instance) in state.instances.iter().enumerate() {
+        eprintln!(">> [{}] {:?}", i, instance)
+    }
+}
 
 fn debug_trace(vm: &VM, instr: &Instr, state: &VMState) {
     eprintln!("---");

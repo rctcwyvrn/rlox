@@ -1,6 +1,9 @@
 use crate::value::{Value, HeapObj, HeapObjVal, ObjPointer};
 
 use std::collections::HashMap;
+use std::collections::BinaryHeap;
+use std::cmp::Reverse;
+
 
 const DEBUG_GC: bool = false;
 const DEBUG_STRESS_GC: bool = false;
@@ -8,6 +11,7 @@ const DEBUG_STRESS_GC: bool = false;
 const INIT_GC_THRESHOLD: usize = 20;
 const MIN_SCALING_FACTOR: f64 = 0.5;
 const MAX_SCALING_FACTOR: f64 = 1.2;
+const SHRINK_THRESHOLD: f64 = 0.75; // Shrink if new_size < current_size * shrink_threshold => close to 1 means lots of shrinks, close to 0 means rarely shrink
 
 // The garbage collector. Let's go
 
@@ -39,7 +43,9 @@ pub struct GC {
     next_gc_threshold: usize, // The number of allocations allowed until we GC
 
     grey_worklist: Vec<usize>, // Each worklist task is an index into the instances vec for the HeapObj
-    free_slots: Vec<usize>,
+    free_slots: BinaryHeap<Reverse<usize>>, // A priority queue for which slots to allocate. A min-heap because we want to allocate the front slots of the instances vec first,
+    // so that the later slots (which are still filled but just with placeholders) can be truncated in the cases where a users program allocates a large amount, drops them all, and then leavesthe instances vec full of placeholders
+
     // unmarked: bool, // Which bool type represents an "unmarked" node
                        // Annoying to implement because new variables will get instantiated with the wrong value, possibly allowing them to live one extra round of GC
 }
@@ -54,11 +60,15 @@ impl GC {
         let index = if self.free_slots.is_empty() {
             self.instances.len() - 1
         } else {
-            let index = self.free_slots.pop().unwrap();
-            // Swap the instance over to it's slot and remove the placeholder that used to be there
-            let placeholder = self.instances.swap_remove(index);
-            if placeholder.obj != HeapObjVal::HeapPlaceholder { panic!("VM error! GC attempted to use an allocated value as a free slot") }
-            index
+            match self.free_slots.pop() {
+                Some(Reverse(index)) => { 
+                    // Swap the instance over to it's slot and remove the placeholder that used to be there
+                    let placeholder = self.instances.swap_remove(index);
+                    if placeholder.obj != HeapObjVal::HeapPlaceholder { panic!("VM error! GC attempted to use an allocated value as a free slot") }
+                    index
+                },
+                None => { 0 },
+            }
         };
 
         self.allocations+=1;
@@ -73,7 +83,7 @@ impl GC {
 
         self.instances.push(Box::new(HeapObj::new_placeholder()));
         self.instances.swap_remove(index);
-        self.free_slots.push(index);
+        self.free_slots.push(Reverse(index));
         self.allocations-=1;
     }
 
@@ -141,16 +151,50 @@ impl GC {
 
     fn sweep(&mut self) {
         let mut to_free = Vec::new();
+        let mut shrinkable_to: Option<usize> = None;
+
         for (i, obj) in self.instances.iter_mut().enumerate() {
-            if !(obj.obj == HeapObjVal::HeapPlaceholder) && !obj.is_marked {
-                to_free.push(i);
+            if obj.obj == HeapObjVal::HeapPlaceholder {
+                match shrinkable_to {
+                    Some(_) => {},
+                    None => shrinkable_to = Some(i),
+                }
             } else {
-                obj.is_marked = false;
+                shrinkable_to = None;
+                if !obj.is_marked {
+                    to_free.push(i);
+                } else {
+                    obj.is_marked = false;
+                }
             }
         }
 
+        // Free the unmarked instances
         for index in to_free.iter() {
             self.free(*index);
+        }
+
+        // Shrink the instances vec as much as possible, but only if we will be removing a lot of them
+        if let Some(new_size) = shrinkable_to {
+            if (new_size as f64) < SHRINK_THRESHOLD * (self.instances.len() as f64) {
+                if DEBUG_GC { eprintln!("shrinking from {} to {}", self.instances.len(), new_size) }
+                self.instances.truncate(new_size);
+
+                // Make sure that we remove those indices from free_slots
+                let mut new_slots:BinaryHeap<Reverse<usize>> = BinaryHeap::new();
+                for x in self.free_slots.drain() {
+                    match x {
+                        Reverse(i) => {
+                            if i < new_size {
+                                new_slots.push(x)
+                            }
+                        }
+                    }
+                }
+                self.free_slots = new_slots;
+            } else {
+                if DEBUG_GC { eprintln!("not shrinking from {} to {}", self.instances.len(), new_size) }
+            }
         }
     }
 
@@ -160,6 +204,7 @@ impl GC {
         // Use that difference to determine the next_gc_threshold
         let diff = self.next_gc_threshold - self.allocations;
 
+        // 0 <= diff <= old_threshold
         // If this number is small, then we have mostly live values, and we should let the heap grow quite a bit before we try to GC again
         // => If diff = 0, double the threshold
 
@@ -185,6 +230,7 @@ impl GC {
         self.sweep();
 
         if DEBUG_GC {
+            // # of collections this round is inaccurate if we have DEBUG_GC_STRESS turned on, since we don't use the threshold
             eprintln!("After collection | vec_size = {} | allocations = {} | collected = {}", self.instances.len(), self.allocations, self.next_gc_threshold - self.allocations);
         }
 
@@ -199,7 +245,7 @@ impl GC {
         GC {
             grey_worklist: Vec::new(),
             instances: Vec::new(),
-            free_slots: Vec::new(),
+            free_slots: BinaryHeap::new(),
             allocations: 0,
             next_gc_threshold: INIT_GC_THRESHOLD,
         }

@@ -2,17 +2,35 @@ use crate::value::{Value, HeapObj, HeapObjVal, ObjPointer};
 
 use std::collections::HashMap;
 
-const DEBUG_GC: bool = true;
-const DEBUG_STRESS_GC: bool = true;
+const DEBUG_GC: bool = false;
+const DEBUG_STRESS_GC: bool = false;
 
-const INIT_GC_THRESHOLD: usize = 100;
+const INIT_GC_THRESHOLD: usize = 20;
 const MIN_SCALING_FACTOR: f64 = 0.5;
 const MAX_SCALING_FACTOR: f64 = 1.2;
 
-// The garbage collector. Lets go
+// The garbage collector. Let's go
+
+// Important note to make sure I never break the GC:
 // The only way we can deallocate something that we didnt mean to is if we have a LoxPointer somewhere other than the stack, globals, or in a reachable HeapObj 
 // So be careful if we ever alloc a LoxClosure or a LoxInstance when a LoxPointer is floating around on the rust stack
-// => ie popping a value off, calling alloc, and then doing something with that value
+//   => ie popping a value off, calling alloc, and then doing something with that value. If that value is the last pointer to an instance, it'll cause the instance to be deleted
+
+// Ideas for making this not have placeholder values / fewer placeholder values: 
+// Steps to making it work: 
+// 1. Use a linked list for instances
+// 2. When removing a value, replace the node with a placeholder
+// 3. When removing a value next to a placeholder, merge the two together and increment a counter in the placeholder
+// 4. When traverseing the linked list, a placeholder is worth {counter} slots
+// 5. When allocating values, use the same queue but if it hits the middle of a placeholder, split it down the middle into two placeholders? 
+//   => Ideally we would not but since the free_slots stack is not ordered in any way we don't have any guarentees
+
+// This would get rid of most of the placeholder values but with a few problems
+// A. The memory usage of the placeholders is minimal already
+// B. Placeholders don't necessarily "leak", ie: running the program for a long enough time will not cause a memory shortage unless the code itself had used that much memory without GCing
+// C. Linked lists and doing those traversals will undoubltly be slower than the current Vec implementation, will it even be worth it?
+
+// All in all, I think I'll need to wait until I have some code to profile. (but since this is a for fun compiler this is just short for "im never going to do this unless i have some spare time and have nothing better to do")
 
 pub struct GC {
     pub instances: Vec<Box<HeapObj>>,
@@ -32,13 +50,14 @@ impl GC {
             self.collect_garbage(stack, globals);
         }
 
+        self.instances.push(Box::new(val)); // Either way we need to put on the new instance
         let index = if self.free_slots.is_empty() {
-            self.instances.push(Box::new(val));
             self.instances.len() - 1
         } else {
             let index = self.free_slots.pop().unwrap();
-            self.instances.push(Box::new(val));
-            self.instances.swap_remove(index);
+            // Swap the instance over to it's slot and remove the placeholder that used to be there
+            let placeholder = self.instances.swap_remove(index);
+            if placeholder.obj != HeapObjVal::HeapPlaceholder { panic!("VM error! GC attempted to use an allocated value as a free slot") }
             index
         };
 
@@ -123,7 +142,7 @@ impl GC {
     fn sweep(&mut self) {
         let mut to_free = Vec::new();
         for (i, obj) in self.instances.iter_mut().enumerate() {
-            if !(obj.obj == HeapObjVal::HeapPlaceholder) &&  !obj.is_marked {
+            if !(obj.obj == HeapObjVal::HeapPlaceholder) && !obj.is_marked {
                 to_free.push(i);
             } else {
                 obj.is_marked = false;
@@ -136,8 +155,6 @@ impl GC {
     }
 
     /// Rescale the GC threshold. Called after all garbage collections
-    /// 
-    /// Note: I'm doing this because I don't know how to actually do the unsafe rust thing and have unallocated memory
     fn rescale_threshold(&mut self) {
         // Now we know we went from self.next_gc_threshold # of instances down to self.allocations # of instances
         // Use that difference to determine the next_gc_threshold

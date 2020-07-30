@@ -7,6 +7,7 @@ mod scanner;
 mod prec;
 mod native;
 mod resolver;
+mod gc;
 
 use crate::vm::{VM, ExecutionMode, InterpretResult};
 use crate::compiler::{Compiler};

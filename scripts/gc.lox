@@ -1,0 +1,7 @@
+class Test {}
+var test = Test();
+test.a = "a";
+test = Test();
+test.b = "b";
+test = Test();
+test.c = "c";

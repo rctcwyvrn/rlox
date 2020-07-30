@@ -69,6 +69,7 @@ pub struct ObjPointer {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum HeapObjType {
+    HeapPlaceholder,
     LoxInstance,
     LoxClosure,
 }
@@ -77,8 +78,7 @@ pub enum HeapObjType {
 pub struct HeapObj {
     pub obj: HeapObjVal,
     pub obj_type: HeapObjType,
-    //pub type: ObjType,
-    //pub is_marked: bool,
+    pub is_marked: bool,
 }
 
 impl HeapObj {
@@ -90,6 +90,7 @@ impl HeapObj {
         HeapObj {
             obj: HeapObjVal::LoxInstance(val),
             obj_type: HeapObjType::LoxInstance,
+            is_marked: false,
         }
     }
 
@@ -97,6 +98,15 @@ impl HeapObj {
         HeapObj {
             obj: HeapObjVal::LoxClosure(val),
             obj_type: HeapObjType::LoxClosure,
+            is_marked: false,
+        }
+    }
+
+    pub fn new_placeholder() -> HeapObj {
+        HeapObj {
+            obj: HeapObjVal::HeapPlaceholder,
+            obj_type: HeapObjType::HeapPlaceholder,
+            is_marked: false,
         }
     }
 }
@@ -104,6 +114,7 @@ impl HeapObj {
 // I swear i really tried to not have this be duplicate with HeapObjType, but couldn't figure out a way to do it
 #[derive(Debug, PartialEq)]
 pub enum HeapObjVal {
+    HeapPlaceholder,
     LoxInstance(ObjInstance),
     LoxClosure(ObjClosure),
     // LoxString(String), // Maybe...
@@ -114,6 +125,7 @@ impl HeapObjVal {
         match self {
             HeapObjVal::LoxClosure(closure)   => format!("<fn {} | {:?}>", vm.functions.get(closure.function).unwrap().name.as_ref().unwrap(), closure),
             HeapObjVal::LoxInstance(instance) => format!("<instance {}>", instance.class),
+            HeapObjVal::HeapPlaceholder => panic!("VM panic! How did a placeholder value get here?"),
         }
     }
 

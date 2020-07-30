@@ -3,6 +3,7 @@ use crate::debug::*;
 use crate::value::{Value, HeapObj, HeapObjVal, HeapObjType,  ObjClosure, ObjInstance, ObjPointer, is_falsey, values_equal};
 use crate::native::*;
 use crate::resolver::UpValue;
+use crate::gc::GC;
 
 use std::collections::HashMap;
 
@@ -43,7 +44,7 @@ pub struct VMState {
     stack: Vec<Value>,
     frames: Vec<CallFrame>,
     globals: HashMap<String, Value>,
-    pub instances: Vec<HeapObj>,
+    gc: GC,
     // Not implemented due to it destryoing my code => multiple upvalues pointing to the same original value in a function will NOT affect each other. This is a small enough edge case that I'm willing to just let it go
     // upvalues: Vec<Value>, 
 }
@@ -71,23 +72,20 @@ impl VMState {
         self.stack.get(self.stack.len() - dist - 1).unwrap()
     }
 
-    /// FIXME: Replace this with a walking instantiation once garbage collection is added!!
     fn alloc(&mut self, val: HeapObj) -> Value {
-        let index = self.instances.len();
-        self.instances.push(val);
-        Value::LoxPointer(ObjPointer { obj: index })
+        self.gc.alloc(val, &self.stack, &self.globals)
     }
 
     // Fixme: Figure out how to not copy paste this code for mut and immut
     pub fn deref(&self, pointer: ObjPointer) -> &HeapObj {
-        match self.instances.get(pointer.obj) {
+        match self.gc.instances.get(pointer.obj) {
             Some(x) => x,
             None => panic!("VM panic! Invalid pointer"),
         }
     }
 
     fn deref_mut(&mut self, pointer: ObjPointer) -> &mut HeapObj {
-        match self.instances.get_mut(pointer.obj) {
+        match self.gc.instances.get_mut(pointer.obj) {
             Some(x) => x,
             None => panic!("VM panic! Invalid pointer"),
         }
@@ -226,11 +224,6 @@ impl VMState {
 
             let ptr = self.alloc(HeapObj::new_instance(instance_obj));
             self.push(ptr);
-
-            // The problem: 
-            // Once gc is added the instances vec is gonna shrink at random times, meaning the LoxPointers will get shifted around
-            // This means that we need to replace the values in the vec with placeholder values
-            // So the "malloc" for self.instances will need to walk along and place values in properly
             None
         } else {
             Some(String::from("Can only call functions and classses"))
@@ -306,7 +299,7 @@ impl VMState {
             stack,
             frames,
             globals: HashMap::new(),
-            instances: Vec::new(),
+            gc: GC::new(),
         };
 
         state.define_std_lib();
@@ -596,7 +589,7 @@ fn debug_state_trace(state: &VMState) {
 
 fn debug_instances(state: &VMState) {
     eprintln!("> Instances: ");
-    for (i,instance) in state.instances.iter().enumerate() {
+    for (i,instance) in state.gc.instances.iter().enumerate() {
         eprintln!(">> [{}] {:?}", i, instance)
     }
 }

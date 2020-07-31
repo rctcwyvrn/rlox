@@ -1,9 +1,10 @@
-use crate::chunk::{OpCode, Instr, FunctionChunk};
+use crate::chunk::{OpCode, Instr, FunctionChunk, ClassChunk};
 use crate::debug::*;
-use crate::value::{Value, HeapObj, HeapObjVal, HeapObjType,  ObjClosure, ObjInstance, ObjPointer, is_falsey, values_equal};
+use crate::value::{Value, HeapObj, HeapObjVal, HeapObjType,  ObjClosure, ObjInstance, ObjPointer, ObjBoundMethod, is_falsey, values_equal};
 use crate::native::*;
 use crate::resolver::UpValue;
 use crate::gc::GC;
+use crate::compiler::CompilationResult;
 
 use std::collections::HashMap;
 
@@ -192,11 +193,13 @@ impl VMState {
         closure.values[index] = val;
     }
 
-    /// Checks if the targetted Value is a LoxFunction, passes it to call() to continue attempting the call.
-    /// Calls call_native() if the Value is a NativeFunction
+    /// Checks if the targetted Value is callable {LoxPointer to a LoxClosure, NativeFn, LoxClass, LoxBoundMethod}, passes it to call() to continue attempting the call if necessary.
+    /// 
+    /// Note: This function or call() must fufill the promise made in Resolver about what value sits in slot 0 of the local variables.
+    /// Whether that's 'this' or a placeholder
     /// 
     /// Returns a String containing an error message or None
-    fn call_value(&mut self, arg_count: usize, function_defs: &Vec<FunctionChunk>) -> Option<String> {
+    fn call_value(&mut self, arg_count: usize, function_defs: &Vec<FunctionChunk>, class_defs: &Vec<ClassChunk>) -> Option<String> {
         let callee = self.peek_at(arg_count);
         if let Value::LoxPointer(_) = callee {
             match self.deref_into(callee, HeapObjType::LoxClosure) {
@@ -213,17 +216,29 @@ impl VMState {
             let native_fn = native_fn.clone();
             self.call_native(&native_fn, arg_count);
             None
+        } else if let Value::LoxBoundMethod(method) = callee {
+            let fn_index = method.method;
+            let index = self.stack.len() - arg_count - 1; // Index to put the LoxPointer to represent the "this" variable
+            self.stack[index] = Value::LoxPointer(method.pointer);
+            self.call(fn_index, arg_count, function_defs)
         } else if let Value::LoxClass(class) = callee {
-            //let class = class.class;
-
-            // No constructors for now, just put on the instance
-            if arg_count != 0 { panic!("constructor arguments not implemented yet")};
-
             let instance_obj = ObjInstance::new(*class);
-            self.pop(); // Pop the LoxClass
-
+            let class_def = &class_defs[*class];
             let ptr = self.alloc(HeapObj::new_instance(instance_obj));
-            self.push(ptr);
+            let index = self.stack.len() - arg_count - 1;
+            self.stack[index] = ptr; // Replace the LoxClass with the pointer
+
+            // Call the initializer if it exists
+            // If the LoxClass was called with arguments the stack will look like this: LoxClass | arg1 | arg2 
+            // So we want to call with the stack as: LoxPointer => LoxInstance | arg1 | arg2 
+            // And we need the init() fn to return the LoxInstance
+            let init = &String::from("init");
+            if class_def.methods.contains_key(init) {
+                self.call(*class_def.methods.get(init).unwrap(), arg_count, function_defs);
+            } else if arg_count != 0 {
+                return Some(format!("Expected 0 arguments but got {} instead", arg_count));
+            }
+
             None
         } else {
             Some(String::from("Can only call functions and classses"))
@@ -310,11 +325,16 @@ impl VMState {
 pub struct VM {
     mode: ExecutionMode,
     pub functions: Vec<FunctionChunk>, // Stores all function definitions
+    pub classes: Vec<ClassChunk>,
 }
 
 impl VM {
-    pub fn new<'a>(mode: ExecutionMode, functions: Vec<FunctionChunk>) -> VM {
-        VM { mode, functions }
+    pub fn new<'a>(mode: ExecutionMode, result: CompilationResult) -> VM {
+        VM { 
+            mode, 
+            functions: result.functions,
+            classes: result.classes,
+        }
     }
 
     fn get_chunk(&self, state: &VMState) -> &FunctionChunk {
@@ -443,11 +463,41 @@ impl VM {
                     let dest = state.frame_start() + index;
                     state.stack[dest] = state.peek().clone(); // Same idea as OpSetGlobal, don't pop value since it's an expression
                 },
+                OpCode::OpInvoke(index, arg_count) => {
+                    let name = self.get_variable_name(index, &state);
+                    let pointer_val = state.peek_at(arg_count);
 
+                    let result = match state.deref_into(pointer_val, HeapObjType::LoxInstance) {
+                        Ok(instance) => {
+                            let instance = instance.as_instance();            
+                            let class_def = &self.classes[instance.class];
+                            if instance.fields.contains_key(&name) { // Guard against the weird edge case where instance.thing() is actually calling a closure instance.thing, not a method invocation
+                                let value = instance.fields.get(&name).unwrap().clone();
+                                state.pop(); // Remove the instance
+                                state.push(value); // Replace with the value
+                                None
+                            } else if class_def.methods.contains_key(&name) {
+                                // We know that the top of the stack is LoxPointer | arg1 | arg2 
+                                // So we can go ahead and call
+                                let fn_index = class_def.methods.get(&name).unwrap();
+                                state.call(*fn_index, arg_count, &self.functions)
+                            } else {
+                                Some(format!("Undefined property '{}' in {:?}", name, instance))
+                            }
+                        },
+                        Err(_) => { Some(String::from("Can only invoke methods on class instances"))},
+                    };
+
+                    if let Some(error) = result {
+                        self.runtime_error(error.as_str(), &state);
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+                },
                 OpCode::OpGetProperty(index) => {
                     let name = self.get_variable_name(index, &state);
                     let pointer_val = state.peek();
 
+                    // Todo: Combine this and SetProperty into a macro so it doesn't hurt me everytime i have to read this
                     match state.deref_into(pointer_val, HeapObjType::LoxInstance) {
                         Ok(instance) => {
                             let instance = instance.as_instance();
@@ -456,8 +506,18 @@ impl VM {
                                 state.pop(); // Remove the instance
                                 state.push(value); // Replace with the value
                             } else {
-                                self.runtime_error(format!("Undefined property {} found in {:?}", name, instance).as_str(), &state);
-                                return InterpretResult::InterpretRuntimeError;
+                                let class_chunk = &self.classes[instance.class];
+                                if class_chunk.methods.contains_key(&name) {
+                                    let bound_value = ObjBoundMethod { 
+                                        method: *class_chunk.methods.get(&name).unwrap(), 
+                                        pointer: pointer_val.as_pointer(),
+                                    };
+                                    state.pop(); // Remove the instance
+                                    state.push(Value::LoxBoundMethod(bound_value)); // Replace with bound method
+                                } else {
+                                    self.runtime_error(format!("Undefined property '{}' in {:?}", name, instance).as_str(), &state);
+                                    return InterpretResult::InterpretRuntimeError;
+                                }
                             }
                         },
                         Err(_) => {
@@ -516,14 +576,14 @@ impl VM {
                 OpCode::OpLoop(neg_offset) => state.jump_back(neg_offset),
 
                 OpCode::OpCall(arity) => {
-                    let result = state.call_value(arity, &self.functions);
+                    let result = state.call_value(arity, &self.functions, &self.classes);
                     if let Some(msg) = result { 
                         self.runtime_error(&msg[..], &state);
                         return InterpretResult::InterpretRuntimeError; 
                     }
                 },
 
-                OpCode::OpClass(_index) => state.push(Value::LoxClass(0)),
+                OpCode::OpClass(index) => state.push(Value::LoxClass(index)),
 
                 OpCode::OpConstant(index) => state.push(self.get_chunk(&state).chunk.get_constant(index)), // FIXME
                 OpCode::OpTrue            => state.push(Value::Bool(true)),

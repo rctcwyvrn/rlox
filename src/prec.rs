@@ -30,6 +30,7 @@ pub enum ParseFn {
     Or,
     Call,
     Dot,
+    This,
 }
 
 pub struct ParseRule {
@@ -181,6 +182,11 @@ const PARSE_RULE_DOT: ParseRule = ParseRule {
     infix: ParseFn::Dot,
     precedence: Precedence::PrecCall
 };
+const PARSE_RULE_THIS: ParseRule = ParseRule {
+    prefix: ParseFn::This,
+    infix: ParseFn::None,
+    precedence: Precedence::PrecNone
+};
 
 pub fn get_rule(operator: TokenType) -> ParseRule {
     match operator {
@@ -205,6 +211,7 @@ pub fn get_rule(operator: TokenType) -> ParseRule {
         TokenType::TokenAnd         => PARSE_RULE_AND,
         TokenType::TokenOr          => PARSE_RULE_OR,
         TokenType::TokenDot         => PARSE_RULE_DOT,
+        TokenType::TokenThis        => PARSE_RULE_THIS,
         _                           => PARSE_RULE_NONE
     }
 }

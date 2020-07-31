@@ -1,3 +1,5 @@
+use crate::chunk::FunctionType;
+
 /// Manages the declaration and definition of local variables
 /// 
 /// One ResolverNode is created and pushed onto the stack for each function definition. It then gets popped off once its definition ends, so the value on top of each ResolverNode
@@ -77,12 +79,14 @@ impl Resolver {
     }
 
     /// Push a new ResolverNode for the new function scope
-    pub fn push(&mut self) {
+    pub fn push(&mut self, fn_type: FunctionType) {
         let mut locals = Vec::new();
-        locals.push(Local {             // Placeholder local variable for VM use -> Will be filled by the function obj
-            name: String::from(""),
-            depth: None,
-        });
+        let first_local = match fn_type {
+            FunctionType::Method | FunctionType::Initializer => { Local { name: String::from("this"), depth: Some(1) }}, // Fill the first slot with a magically initialized "this"
+            _ => { Local { name: String::from(""), depth: None,}}   // Fill the first slot with a blank to be filled with the closure
+        };
+        locals.push(first_local);
+        
 
         let new = ResolverNode {
             upvalues: Vec::new(),

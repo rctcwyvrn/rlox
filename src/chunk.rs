@@ -1,6 +1,8 @@
 use crate::value::Value;
 use crate::resolver::{UpValue};
 
+use std::collections::HashMap;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OpCode {
     OpReturn,
@@ -13,6 +15,7 @@ pub enum OpCode {
     OpGetLocal(usize), // Index on the stack
     OpSetLocal(usize), // ^
 
+    OpInvoke(usize, usize), // Combines a GetProperty and a Call. Contains the exact same information. First usize is the index for the property name, second is for the arity
     OpGetProperty(usize), // Index of the LoxString variable in the constants vec corresponding with the property name
     OpSetProperty(usize), // ^
                           // Optimization todo: Fix this LoxString storing in the constants vec. Either only save one, or get rid of it entierly by resolving the globals/instance slot at compilation
@@ -27,7 +30,7 @@ pub enum OpCode {
 
     OpCall(usize), // Arity
 
-    OpClass(usize), // Index in the constants vec for the class name => temp: replace this with the index into a vec of functionchunk like objects
+    OpClass(usize), // Index into the classes vec for the ClassChunk object
 
     OpConstant(usize), // Index of the constant we want to retrieve
     OpNil,
@@ -48,7 +51,7 @@ pub enum OpCode {
     OpPrint,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Instr {
     pub op_code: OpCode,
     pub line_num: usize
@@ -89,7 +92,9 @@ impl Chunk {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FunctionType {
     Function,
-    Script
+    Script,
+    Method,
+    Initializer,
 }
 
 /// Compile time representation of a function, ie its code, name, resolved closure information
@@ -115,5 +120,21 @@ impl FunctionChunk {
 
     pub fn set_upvalues(&mut self, upvalues: Vec<UpValue>) {
         self.upvalues = Some(upvalues);
+    }
+}
+
+/// Compile time repr of a class
+#[derive(Debug)]
+pub struct ClassChunk {
+    pub name: String,
+    pub methods: HashMap<String, usize>,
+}
+
+impl ClassChunk {
+    pub fn new(name: String) -> ClassChunk {
+        ClassChunk {
+            name,
+            methods: HashMap::new(),
+        }
     }
 }

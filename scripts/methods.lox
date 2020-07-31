@@ -1,0 +1,13 @@
+class Cat {
+    init(name) {
+        this.name = name;
+    }
+
+    meow() {
+        print this.name + " says nyaa~~";
+    }
+}
+
+var void = Cat("Void <3");
+
+void.meow();

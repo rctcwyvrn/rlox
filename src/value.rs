@@ -13,6 +13,7 @@ pub enum Value {
     NativeFunction(NativeFn),
     LoxClass(usize),
     LoxPointer(ObjPointer),
+    LoxBoundMethod(ObjBoundMethod),
 }
 
 impl Value {
@@ -27,6 +28,7 @@ impl Value {
             Value::NativeFunction(x)        => format!("<native_fn {:?}>", x),
             Value::LoxClass(class)          => format!("<class {}>", class),
             Value::LoxPointer(pointer)      => format!("<pointer {}> to {}", pointer.obj, state.deref(*pointer).to_string(vm)),
+            Value::LoxBoundMethod(method)   => format!("<method {} from {}", vm.functions.get(method.method).unwrap().name.as_ref().unwrap(), state.deref(method.pointer).to_string(vm))
         }
     }
 
@@ -35,6 +37,15 @@ impl Value {
             Some(val.clone())
         } else {
             None
+        }
+    }
+
+    /// Hard cast to a ObjPointer. Panics if this value is not a LoxPointer
+    pub fn as_pointer(&self) -> ObjPointer {
+        if let Value::LoxPointer(ptr) = self {
+            *ptr
+        } else {
+            panic!("VM panic! Failed to cast value to a pointer. Found {:?} instead", self)
         }
     }
 }
@@ -65,6 +76,12 @@ pub fn values_equal(t: (Value, Value)) -> bool {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ObjPointer {
     pub obj: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ObjBoundMethod {
+    pub method: usize, // Index into the functions vec for which function to call
+    pub pointer: ObjPointer, // Pointer to the LoxInstance that this method is bound to
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

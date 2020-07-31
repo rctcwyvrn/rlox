@@ -1,5 +1,5 @@
 use crate::scanner::{Scanner, Token, TokenType};
-use crate::chunk::{OpCode, Instr, Chunk, FunctionChunk, FunctionType};
+use crate::chunk::{OpCode, Instr, Chunk, FunctionChunk, FunctionType, ClassChunk};
 use crate::value::Value;
 use crate::prec::{Precedence, ParseFn, get_rule};
 use crate::debug::{DEBUG, disassemble_chunk};
@@ -9,6 +9,9 @@ use crate::resolver::{Resolver};
 pub struct Compiler<'a> {
     scanner: Scanner<'a>,
     tokens: Vec<Token>,
+
+    classes: Vec<ClassChunk>,
+    current_class: Option<usize>,
 
     functions: Vec<FunctionChunk>,
     current_function: usize, // The current FunctionChunk
@@ -35,6 +38,11 @@ impl Compiler<'_> {
 
     fn current_fn_type(&self) -> FunctionType {
         self.functions.get(self.current_function).unwrap().fn_type
+    }
+
+    /// Panics if not in a class. Only call this if you're sure you're in a class def!
+    fn current_class(&mut self) -> &mut ClassChunk {
+        self.classes.get_mut(self.current_class.unwrap()).unwrap()
     }
 
     fn advance(&mut self){
@@ -126,7 +134,11 @@ impl Compiler<'_> {
     }
 
     fn emit_return(&mut self) {
-        self.emit_instrs(&[OpCode::OpNil, OpCode::OpReturn]);
+        if self.current_fn_type() == FunctionType::Initializer {
+            self.emit_instrs(&[OpCode::OpGetLocal(0), OpCode::OpReturn]);
+        } else {
+            self.emit_instrs(&[OpCode::OpNil, OpCode::OpReturn]);
+        }
     }
 
     /// Emits OpCode::OpJump
@@ -228,6 +240,7 @@ impl Compiler<'_> {
             ParseFn::Or         => self.or_operator(),
             ParseFn::Call       => self.call(),
             ParseFn::Dot        => self.dot(can_assign),
+            ParseFn::This       => self.this(),
         }
     }
 
@@ -257,11 +270,23 @@ impl Compiler<'_> {
         let name_index = self.identifier_constant(&name);
         self.declare_variable();
 
-        self.emit_instr(OpCode::OpClass(name_index));
+        let class = ClassChunk::new(name);
+        let old_class = self.current_class;
+        self.classes.push(class);
+
+        let class_index = self.classes.len() - 1;
+        self.current_class = Some(class_index);
+        
+        self.emit_instr(OpCode::OpClass(class_index));
         self.define_variable(name_index);
 
         self.consume(TokenType::TokenLeftBrace, "Expected '{' before class body");
+        while !self.check(TokenType::TokenRightBrace) && !self.check(TokenType::TokenEOF) {
+            self.method();
+        }
         self.consume(TokenType::TokenRightBrace, "Expected '}' after class body");
+
+        self.current_class = old_class;
     }
 
     // Note: Since this constantly confuses me, I'm gonna keep a note here so that I don't forget how variables work in rlox
@@ -346,6 +371,10 @@ impl Compiler<'_> {
             // Nil return
             self.emit_return();
         } else {
+            if self.current_fn_type() == FunctionType::Initializer {
+                self.error("Cannot return a value from initializer");
+            }
+
             self.expression();
             self.consume(TokenType::TokenSemicolon, "Expected ';' after return value");
             self.emit_instr(OpCode::OpReturn);
@@ -446,9 +475,37 @@ impl Compiler<'_> {
         }
         self.consume(TokenType::TokenRightBrace, "Expected '}' after block"); // Fails if we hit EOF instead
     }
+    
+    fn this(&mut self) {
+        if self.current_class == None {
+            self.error("Cannot use keyword 'this' outside of a class");
+        }
+        self.variable(false);
+    }
 
-    /// Compiles the function into a new FunctionChunk, adds it to the current parser, adds the LoxFunction object to the constants stack, returns the OpConstant pointing to it
-    fn function(&mut self, fun_type: FunctionType) {
+    fn method(&mut self) {
+        self.consume(TokenType::TokenIdentifier, "Expected method name");
+        let name = self.previous().lexemme.clone();
+
+        let index =  if name.eq(&String::from("init")) {
+            self.function(FunctionType::Initializer)
+        } else {
+            self.function(FunctionType::Method)
+        };
+        self.current_class().methods.insert(name,index);
+
+        // NOTE!! this way of doing methods does NOT bind closures... So there is a very very stupid way this could go wrong
+        // Something like fun thing() { class Inner { method() { // use a local variable from thing in here }}}
+        // ...
+        // ...
+        // Fuck it
+        // This is a feature
+        // Not a bug
+        // I swear
+    }
+
+    /// Compiles the function into a new FunctionChunk, adds it to the current parser, adds the LoxFunction object to the constants stack, emits a OpConstant pointing to it and a OpClosure to wrap it
+    fn function(&mut self, fun_type: FunctionType) -> usize {
         //let mut function_parser = self.from_old(fun_type);
 
         let index = self.start_child(fun_type);
@@ -474,8 +531,12 @@ impl Compiler<'_> {
         self.block();        
         self.end_child();
 
-        self.emit_constant(Value::LoxFunction(index));
-        self.emit_instr(OpCode::OpClosure);
+        if fun_type != FunctionType::Method && fun_type != FunctionType::Initializer { // We don't need this for methods because they are statically loaded into the ClassChunk, not at runtime on the stack
+            self.emit_constant(Value::LoxFunction(index));
+            self.emit_instr(OpCode::OpClosure);
+        }
+
+        index
     }
 
     fn expression_statement(&mut self) {
@@ -527,7 +588,9 @@ impl Compiler<'_> {
 
     fn string(&mut self) {
         let str_val = self.previous().lexemme.clone();
-        self.emit_constant(Value::LoxString(unwrap_string(&str_val)));
+        let cleaned = str_val[1..str_val.len() -1].to_string();
+
+        self.emit_constant(Value::LoxString(cleaned));
     }
 
     fn variable(&mut self, can_assign: bool) {
@@ -637,16 +700,23 @@ impl Compiler<'_> {
             // Setter
             self.expression();
             self.emit_instr(OpCode::OpSetProperty(name_index));
+        } else if self.match_cur(TokenType::TokenLeftParen) {
+            // A left paren after the initializer will usually mean a method invocation, so compress that into a single OpCode here
+            let arg_count = self.argument_list();
+            self.emit_instr(OpCode::OpInvoke(name_index, arg_count));
         } else {
             self.emit_instr(OpCode::OpGetProperty(name_index));
         }
+        // } else {
+        //     self.emit_instr(OpCode::OpGetProperty(name_index));
+        // }
     }
 
     /// Sets the compiler to generate a new function chunk for the next segment of code
     fn start_child(&mut self, function_type: FunctionType) -> usize {
         let function_name = self.previous().lexemme.clone();
         self.functions.push(FunctionChunk::new(Some(function_name), 0, function_type));
-        self.resolver.push();
+        self.resolver.push(function_type);
         self.parent_functions.push(self.current_function);
         self.current_function = self.functions.len() - 1;
 
@@ -656,7 +726,8 @@ impl Compiler<'_> {
     /// Switches the current chunk out of the new function def
     fn end_child(&mut self) {
         // Emit an implicit nil return if not specified explicity
-        if self.current_chunk_ref().code.last().unwrap().op_code != OpCode::OpReturn {
+        let last_instr = self.current_chunk_ref().code.last();
+        if (last_instr == None) || last_instr.unwrap().op_code != OpCode::OpReturn {
             self.emit_return();
         }
         let upvalues = self.resolver.pop();
@@ -676,6 +747,8 @@ impl Compiler<'_> {
         Compiler {
             scanner,
             tokens,
+            classes: Vec::new(),
+            current_class: None,
             functions,
             current_function: 0,
             parent_functions: Vec::new(),
@@ -686,7 +759,7 @@ impl Compiler<'_> {
     }
 
     // Note: is this an expensive move (moving self into this function) ? Is it less expensive to just move/copy the FunctionChunks afterwards?
-    pub fn compile(mut self) -> Option<Vec<FunctionChunk>> { 
+    pub fn compile(mut self) -> Option<CompilationResult> { 
         while !self.match_cur(TokenType::TokenEOF) {
             self.declaration();
         }
@@ -696,13 +769,24 @@ impl Compiler<'_> {
             for fn_chunk in self.functions.iter() {
                 disassemble_chunk(&fn_chunk.chunk, &fn_chunk.name);
             }
+
+            for class_chunk in self.classes.iter() {
+                eprintln!("{:?}", class_chunk);
+            }
         }
 
-        if !self.had_error { Some(self.functions) } else { None }
+        if !self.had_error { 
+            Some(CompilationResult {
+                classes: self.classes,
+                functions: self.functions,
+            }) 
+        } else { 
+            None 
+        }
     }
 }
 
-// Removes the surrounding "" around TokenString lexemmes
-fn unwrap_string(s: &str) -> String {
-    s[1..s.len() -1].to_string()
+pub struct CompilationResult {
+    pub classes: Vec<ClassChunk>,
+    pub functions: Vec<FunctionChunk>,
 }

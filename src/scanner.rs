@@ -1,15 +1,47 @@
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TokenType {
-    TokenLeftParen, TokenRightParen,
-    TokenLeftBrace, TokenRightBrace,
-    TokenComma, TokenDot, TokenSemicolon,
-    TokenMinus, TokenPlus, TokenSlash, TokenStar,
-    TokenBang, TokenBangEqual, TokenEqual, TokenEqualEqual, TokenGreater, TokenGreaterEqual, TokenLess, TokenLessEqual,
-    
-    TokenIdentifier, TokenString, TokenNumber,
+    TokenLeftParen,
+    TokenRightParen,
+    TokenLeftBrace,
+    TokenRightBrace,
+    TokenComma,
+    TokenDot,
+    TokenSemicolon,
+    TokenMinus,
+    TokenPlus,
+    TokenSlash,
+    TokenStar,
+    TokenBang,
+    TokenBangEqual,
+    TokenEqual,
+    TokenEqualEqual,
+    TokenGreater,
+    TokenGreaterEqual,
+    TokenLess,
+    TokenLessEqual,
 
-    TokenAnd, TokenClass, TokenElse, TokenFalse, TokenFor, TokenFun, TokenIf, TokenNil, TokenOr, TokenPrint, TokenReturn, TokenSuper, TokenThis,
-    TokenTrue, TokenVar, TokenWhile, TokenError, TokenEOF,
+    TokenIdentifier,
+    TokenString,
+    TokenNumber,
+
+    TokenAnd,
+    TokenClass,
+    TokenElse,
+    TokenFalse,
+    TokenFor,
+    TokenFun,
+    TokenIf,
+    TokenNil,
+    TokenOr,
+    TokenPrint,
+    TokenReturn,
+    TokenSuper,
+    TokenThis,
+    TokenTrue,
+    TokenVar,
+    TokenWhile,
+    TokenError,
+    TokenEOF,
 }
 
 #[derive(Debug, Clone)]
@@ -24,20 +56,24 @@ pub struct Scanner<'a> {
     code: &'a str,
     cur_line: usize,
     start_pos: usize,
-    cur_pos: usize
+    cur_pos: usize,
 }
 
 impl Scanner<'_> {
     pub fn new(code: &str) -> Scanner {
-        Scanner {code, cur_line: 1, start_pos: 0, cur_pos: 0}
+        Scanner {
+            code,
+            cur_line: 1,
+            start_pos: 0,
+            cur_pos: 0,
+        }
     }
 
     fn create_token(&self, token_type: TokenType) -> Token {
         Token {
             token_type,
             line_num: self.cur_line,
-            lexemme: self.code[self.start_pos..self.cur_pos].to_string()
-
+            lexemme: self.code[self.start_pos..self.cur_pos].to_string(),
         }
     }
 
@@ -55,18 +91,18 @@ impl Scanner<'_> {
 
     fn advance(&mut self) -> u8 {
         let ret = self.code.as_bytes()[self.cur_pos];
-        self.cur_pos+=1;
+        self.cur_pos += 1;
         ret
     }
 
     fn match_char(&mut self, expected: u8) -> bool {
         if self.is_at_end() {
-            return false
+            return false;
         } else if self.code.as_bytes()[self.cur_pos] != expected {
-            return false
+            return false;
         } else {
-            self.cur_pos+=1;
-            return true
+            self.cur_pos += 1;
+            return true;
         }
     }
 
@@ -85,21 +121,23 @@ impl Scanner<'_> {
     /// This function is gross and it also messes up sometimes near the end of files
     fn skip_whitespace(&mut self) {
         loop {
-            if self.is_at_end() { return; }
+            if self.is_at_end() {
+                return;
+            }
 
             let next = self.peek();
             if (next == b' ') || (next == b'\t') || (next == b'\r') {
                 self.advance();
             } else if next == b'\n' {
                 self.advance();
-                self.cur_line+=1;
+                self.cur_line += 1;
             } else if next == b'/' {
                 if self.peek_next() == b'/' {
                     while self.peek() != b'\n' && !self.is_at_end() {
                         self.advance();
                     }
                     self.advance(); // consume the \n
-                    self.cur_line+=1;
+                    self.cur_line += 1;
                 }
             } else {
                 return;
@@ -109,38 +147,53 @@ impl Scanner<'_> {
 
     fn create_string(&mut self) -> Token {
         while !self.is_at_end() && self.peek() != b'"' {
-            if self.peek() == b'\n' { self.cur_line+=1 }
+            if self.peek() == b'\n' {
+                self.cur_line += 1
+            }
             self.advance();
         }
 
-        if self.is_at_end() { return self.error_token(String::from("Missing delimiter for string")); }
+        if self.is_at_end() {
+            return self.error_token(String::from("Missing delimiter for string"));
+        }
 
         self.advance(); // Step over the closing quote
         return self.create_token(TokenType::TokenString);
     }
 
     fn create_number(&mut self) -> Token {
-        while !self.is_at_end() && is_digit(self.peek()) { self.advance(); }
+        while !self.is_at_end() && is_digit(self.peek()) {
+            self.advance();
+        }
 
         if !self.is_at_end() && self.peek() == b'.' && is_digit(self.peek_next()) {
             self.advance();
-            while is_digit(self.peek()) { self.advance(); }
+            while is_digit(self.peek()) {
+                self.advance();
+            }
         }
 
-        return self.create_token(TokenType::TokenNumber)
+        return self.create_token(TokenType::TokenNumber);
     }
 
     // Helper function for get_identifier_type(), checks that the remaining characters match the keyword_type that was given
     // Returns TokenIdentifier otherwise
-    fn check_for_keyword(&self, start: usize, length: usize, rest: &str, keyword_type: TokenType ) -> TokenType {
-        if self.cur_pos - self.start_pos == start + length { // this will check that begin + length is within the array, since we already moved cur_pos exactly that far
+    fn check_for_keyword(
+        &self,
+        start: usize,
+        length: usize,
+        rest: &str,
+        keyword_type: TokenType,
+    ) -> TokenType {
+        if self.cur_pos - self.start_pos == start + length {
+            // this will check that begin + length is within the array, since we already moved cur_pos exactly that far
             let begin = self.start_pos + start;
             if &self.code[begin..begin + length] == rest {
                 return keyword_type;
             }
         }
         TokenType::TokenIdentifier
-    } 
+    }
 
     // Implements a simple trie to determine if the characters we just parsed make up a keyword or are just an identifier
     fn get_identifier_type(&self) -> TokenType {
@@ -158,7 +211,8 @@ impl Scanner<'_> {
             b'v' => self.check_for_keyword(1, 2, "ar", TokenType::TokenVar),
             b'w' => self.check_for_keyword(1, 4, "hile", TokenType::TokenWhile),
             b'f' => {
-                if self.cur_pos - self.start_pos > 1 {  // more than 1 char in this maybe keyword
+                if self.cur_pos - self.start_pos > 1 {
+                    // more than 1 char in this maybe keyword
                     match self.code.as_bytes()[self.start_pos + 1] {
                         b'a' => self.check_for_keyword(2, 3, "lse", TokenType::TokenFalse),
                         b'o' => self.check_for_keyword(2, 1, "r", TokenType::TokenFor),
@@ -168,9 +222,10 @@ impl Scanner<'_> {
                 } else {
                     TokenType::TokenIdentifier
                 }
-            }, 
+            }
             b't' => {
-                if self.cur_pos - self.start_pos > 1 {  // more than 1 char in this maybe keyword
+                if self.cur_pos - self.start_pos > 1 {
+                    // more than 1 char in this maybe keyword
                     match self.code.as_bytes()[self.start_pos + 1] {
                         b'h' => self.check_for_keyword(2, 2, "is", TokenType::TokenThis),
                         b'r' => self.check_for_keyword(2, 2, "ue", TokenType::TokenTrue),
@@ -179,13 +234,15 @@ impl Scanner<'_> {
                 } else {
                     TokenType::TokenIdentifier
                 }
-            },
-            _ => TokenType::TokenIdentifier
-        }
+            }
+            _ => TokenType::TokenIdentifier,
+        };
     }
 
     fn create_identifier(&mut self) -> Token {
-        while !self.is_at_end() && (is_alpha(self.peek()) || is_digit(self.peek())) { self.advance(); }
+        while !self.is_at_end() && (is_alpha(self.peek()) || is_digit(self.peek())) {
+            self.advance();
+        }
         self.create_token(self.get_identifier_type())
     }
 
@@ -195,7 +252,7 @@ impl Scanner<'_> {
         self.start_pos = self.cur_pos; // reset any seeking we did while we were removing whitespace
 
         if self.is_at_end() {
-            return self.create_token(TokenType::TokenEOF)
+            return self.create_token(TokenType::TokenEOF);
         }
 
         let c = self.advance();
@@ -220,23 +277,39 @@ impl Scanner<'_> {
             b'/' => self.create_token(TokenType::TokenSlash),
             b'*' => self.create_token(TokenType::TokenStar),
             b'!' => {
-                let token_type = if self.match_char(b'=') { TokenType::TokenBangEqual } else { TokenType::TokenBang };
+                let token_type = if self.match_char(b'=') {
+                    TokenType::TokenBangEqual
+                } else {
+                    TokenType::TokenBang
+                };
                 self.create_token(token_type)
-            },
+            }
             b'=' => {
-                let token_type = if self.match_char(b'=') { TokenType::TokenEqualEqual } else { TokenType::TokenEqual };
+                let token_type = if self.match_char(b'=') {
+                    TokenType::TokenEqualEqual
+                } else {
+                    TokenType::TokenEqual
+                };
                 self.create_token(token_type)
-            },
+            }
             b'<' => {
-                let token_type = if self.match_char(b'=') { TokenType::TokenLessEqual } else { TokenType::TokenLess };
+                let token_type = if self.match_char(b'=') {
+                    TokenType::TokenLessEqual
+                } else {
+                    TokenType::TokenLess
+                };
                 self.create_token(token_type)
-            },
+            }
             b'>' => {
-                let token_type = if self.match_char(b'=') { TokenType::TokenGreaterEqual } else { TokenType::TokenGreater };
+                let token_type = if self.match_char(b'=') {
+                    TokenType::TokenGreaterEqual
+                } else {
+                    TokenType::TokenGreater
+                };
                 self.create_token(token_type)
-            },
+            }
             b'"' => self.create_string(),
-            _ => self.error_token(String::from("Invalid character"))
+            _ => self.error_token(String::from("Invalid character")),
         };
     }
 }
@@ -246,7 +319,5 @@ fn is_digit(c: u8) -> bool {
 }
 
 fn is_alpha(c: u8) -> bool {
-    (c >= b'a' && c <= b'z') ||
-         (c >= b'A' && c <= b'Z') ||
-          c == b'_'
+    (c >= b'a' && c <= b'z') || (c >= b'A' && c <= b'Z') || c == b'_'
 }

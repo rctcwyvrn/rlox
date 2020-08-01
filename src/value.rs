@@ -1,5 +1,5 @@
-use crate::vm::{VM, VMState};
 use crate::native::NativeFn;
+use crate::vm::{VMState, VM};
 
 use std::collections::HashMap;
 
@@ -8,7 +8,7 @@ pub enum Value {
     Double(f64),
     Bool(bool),
     Nil,
-    LoxString(String), 
+    LoxString(String),
     LoxFunction(usize), // Index of the function in the functions Vec in VM // Fixme: Is this even reachable? Can this be completely removed and the parameter put in OpClosure?
     NativeFunction(NativeFn),
     LoxClass(usize),
@@ -20,15 +20,31 @@ impl Value {
     /// Used for print statements, use {:?} debug formatting for trace and stack examining
     pub fn to_string(&self, vm: &VM, state: &VMState) -> String {
         match self {
-            Value::Double(x)                => format!("{}",x),
-            Value::Bool(x)                  => format!("{}",x),
-            Value::LoxString(x)             => format!("{}",x),
-            Value::Nil                      => String::from("Nil"),
-            Value::LoxFunction(x)           => format!("<fn {}>", vm.functions.get(*x).unwrap().name.as_ref().unwrap()),
-            Value::NativeFunction(x)        => format!("<native_fn {:?}>", x),
-            Value::LoxClass(class)          => format!("<class {}>", class),
-            Value::LoxPointer(pointer)      => format!("<pointer {}> to {}", pointer.obj, state.deref(*pointer).to_string(vm)), // Suggestion: Don't reveal to the user the internals?
-            Value::LoxBoundMethod(method)   => format!("<method {} from {}", vm.functions.get(method.method).unwrap().name.as_ref().unwrap(), state.deref(method.pointer).to_string(vm))
+            Value::Double(x) => format!("{}", x),
+            Value::Bool(x) => format!("{}", x),
+            Value::LoxString(x) => format!("{}", x),
+            Value::Nil => String::from("Nil"),
+            Value::LoxFunction(x) => format!(
+                "<fn {}>",
+                vm.functions.get(*x).unwrap().name.as_ref().unwrap()
+            ),
+            Value::NativeFunction(x) => format!("<native_fn {:?}>", x),
+            Value::LoxClass(class) => format!("<class {}>", class),
+            Value::LoxPointer(pointer) => format!(
+                "<pointer {}> to {}",
+                pointer.obj,
+                state.deref(*pointer).to_string(vm)
+            ), // Suggestion: Don't reveal to the user the internals?
+            Value::LoxBoundMethod(method) => format!(
+                "<method {} from {}",
+                vm.functions
+                    .get(method.method)
+                    .unwrap()
+                    .name
+                    .as_ref()
+                    .unwrap(),
+                state.deref(method.pointer).to_string(vm)
+            ),
         }
     }
 
@@ -45,7 +61,10 @@ impl Value {
         if let Value::LoxPointer(ptr) = self {
             *ptr
         } else {
-            panic!("VM panic! Failed to cast value to a pointer. Found {:?} instead", self)
+            panic!(
+                "VM panic! Failed to cast value to a pointer. Found {:?} instead",
+                self
+            )
         }
     }
 }
@@ -70,7 +89,6 @@ pub fn values_equal(t: (Value, Value)) -> bool {
     return false;
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ObjPointer {
     pub obj: usize,
@@ -78,7 +96,7 @@ pub struct ObjPointer {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ObjBoundMethod {
-    pub method: usize, // Index into the functions vec for which function to call
+    pub method: usize,       // Index into the functions vec for which function to call
     pub pointer: ObjPointer, // Pointer to the LoxInstance that this method is bound to
 }
 
@@ -142,9 +160,20 @@ pub enum HeapObjVal {
 impl HeapObjVal {
     fn to_string(&self, vm: &VM) -> String {
         match self {
-            HeapObjVal::LoxClosure(closure)   => format!("<fn {} | {:?}>", vm.functions.get(closure.function).unwrap().name.as_ref().unwrap(), closure),
+            HeapObjVal::LoxClosure(closure) => format!(
+                "<fn {} | {:?}>",
+                vm.functions
+                    .get(closure.function)
+                    .unwrap()
+                    .name
+                    .as_ref()
+                    .unwrap(),
+                closure
+            ),
             HeapObjVal::LoxInstance(instance) => format!("<instance {}>", instance.class),
-            HeapObjVal::HeapPlaceholder       => panic!("VM panic! How did a placeholder value get here?"),
+            HeapObjVal::HeapPlaceholder => {
+                panic!("VM panic! How did a placeholder value get here?")
+            }
         }
     }
 
@@ -185,25 +214,31 @@ impl HeapObjVal {
 #[derive(Debug, PartialEq)]
 pub struct ObjInstance {
     pub class: usize, // Which class was this instance made from?
-    pub fields: HashMap<String,Value>, // Stores the field values. FunctionChunks are stored in the ClassChunk, which is not ideal since it adds an extra vec lookup before getting to the function
-    // Todo: Possible improvement: Resolve all the field references at compile time and replace this with just a Vec?
+    pub fields: HashMap<String, Value>, // Stores the field values. FunctionChunks are stored in the ClassChunk, which is not ideal since it adds an extra vec lookup before getting to the function
+                                        // Todo: Possible improvement: Resolve all the field references at compile time and replace this with just a Vec?
 }
 
 impl ObjInstance {
     pub fn new(class: usize) -> ObjInstance {
-        ObjInstance { class, fields: HashMap::new() }
+        ObjInstance {
+            class,
+            fields: HashMap::new(),
+        }
     }
 }
 
 /// Runtime representation of the closure, ie what variables are in scope
 #[derive(Debug, PartialEq)]
 pub struct ObjClosure {
-    pub function: usize, 
+    pub function: usize,
     pub values: Vec<Value>, // Will be filled at runtime
 }
 
 impl ObjClosure {
     pub fn new(function: usize) -> ObjClosure {
-        ObjClosure { function, values: Vec::new() }
+        ObjClosure {
+            function,
+            values: Vec::new(),
+        }
     }
 }

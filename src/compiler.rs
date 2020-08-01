@@ -1,9 +1,9 @@
+use crate::chunk::{Chunk, ClassChunk, FunctionChunk, FunctionType, Instr, OpCode};
+use crate::debug::{disassemble_class_chunk, disassemble_fn_chunk, DEBUG};
+use crate::prec::{get_rule, ParseFn, Precedence};
+use crate::resolver::Resolver;
 use crate::scanner::{Scanner, Token, TokenType};
-use crate::chunk::{OpCode, Instr, Chunk, FunctionChunk, FunctionType, ClassChunk};
 use crate::value::Value;
-use crate::prec::{Precedence, ParseFn, get_rule};
-use crate::debug::{DEBUG, disassemble_fn_chunk, disassemble_class_chunk};
-use crate::resolver::{Resolver};
 
 #[derive(Debug)]
 pub struct Compiler<'a> {
@@ -14,7 +14,7 @@ pub struct Compiler<'a> {
     current_class: Option<usize>,
 
     functions: Vec<FunctionChunk>,
-    current_function: usize, // The current FunctionChunk
+    current_function: usize,      // The current FunctionChunk
     parent_functions: Vec<usize>, // Which FunctionChunk should the the compiler return to after. Acts as a stack
 
     resolver: &'a mut Resolver, // Manages the slots for the local variables and upvalues, represented as a Vec of individal ResolverNodes
@@ -45,7 +45,7 @@ impl Compiler<'_> {
         self.classes.get_mut(self.current_class.unwrap()).unwrap()
     }
 
-    fn advance(&mut self){
+    fn advance(&mut self) {
         self.tokens.push(self.scanner.scan_token()); // Fixme: Wastes memory by not just dropping the older tokens, make advance() drop older tokens after i finish the code?
         if self.current().token_type == TokenType::TokenError {
             self.error("Error in scanning");
@@ -84,13 +84,15 @@ impl Compiler<'_> {
     }
 
     fn error(&mut self, message: &str) {
-        if self.panic_mode { return } // Ignore other errors while in panic_mode
+        if self.panic_mode {
+            return;
+        } // Ignore other errors while in panic_mode
         let token = self.previous();
         eprintln!("[Line {}] Error", token.line_num);
         match token.token_type {
             TokenType::TokenEOF => eprintln!(" at end of file"),
             TokenType::TokenError => (), // nothing
-            _ => eprint!(" at '{}'", token.lexemme)
+            _ => eprint!(" at '{}'", token.lexemme),
         }
 
         eprintln!(": {}", message);
@@ -103,9 +105,18 @@ impl Compiler<'_> {
         self.panic_mode = false;
 
         while !self.check(TokenType::TokenEOF) {
-            if self.previous().token_type == TokenType::TokenSemicolon { return; }
+            if self.previous().token_type == TokenType::TokenSemicolon {
+                return;
+            }
             match self.current().token_type {
-                TokenType::TokenClass | TokenType::TokenFun | TokenType::TokenVar | TokenType::TokenFor | TokenType::TokenIf | TokenType::TokenWhile | TokenType::TokenPrint | TokenType::TokenReturn => return,
+                TokenType::TokenClass
+                | TokenType::TokenFun
+                | TokenType::TokenVar
+                | TokenType::TokenFor
+                | TokenType::TokenIf
+                | TokenType::TokenWhile
+                | TokenType::TokenPrint
+                | TokenType::TokenReturn => return,
                 _ => (),
             }
             self.advance();
@@ -116,7 +127,7 @@ impl Compiler<'_> {
         // println!("Emitting instr {:?} from token {:?}", op_code, self.previous()); kinda useful
         let instr = Instr {
             op_code,
-            line_num: self.previous().line_num
+            line_num: self.previous().line_num,
         };
         self.current_chunk().write_instruction(instr)
     }
@@ -143,13 +154,13 @@ impl Compiler<'_> {
 
     /// Emits OpCode::OpJump
     fn emit_jump(&mut self) -> usize {
-        self.emit_instr(OpCode::OpJump(usize::max_value())); 
+        self.emit_instr(OpCode::OpJump(usize::max_value()));
         self.current_chunk().code.len() - 1
     }
 
     /// Emits OpCode::OpJumpIfFalse
     fn emit_jif(&mut self) -> usize {
-        self.emit_instr(OpCode::OpJumpIfFalse(usize::max_value())); 
+        self.emit_instr(OpCode::OpJumpIfFalse(usize::max_value()));
         self.current_chunk().code.len() - 1
     }
 
@@ -159,10 +170,12 @@ impl Compiler<'_> {
         if jump_amount > usize::max_value() {
             self.error("Too much code to jump over.");
         }
-          
+
         let jump_instr = self.current_chunk().code.get_mut(offset).unwrap();
         macro_rules! replace_jump {
-            ($jump_type: path) => {{jump_instr.op_code = $jump_type(jump_amount)}}
+            ($jump_type: path) => {{
+                jump_instr.op_code = $jump_type(jump_amount)
+            }};
         }
 
         match jump_instr.op_code {
@@ -170,8 +183,11 @@ impl Compiler<'_> {
             OpCode::OpJumpIfFalse(_) => replace_jump!(OpCode::OpJumpIfFalse),
             _ => {
                 let instr = self.current_chunk_ref().code.get(offset).unwrap().clone();
-                self.error(&format!("Attempted to patch a non_jump op code instruction: {:?}", instr));
-            },
+                self.error(&format!(
+                    "Attempted to patch a non_jump op code instruction: {:?}",
+                    instr
+                ));
+            }
         }
     }
 
@@ -193,12 +209,12 @@ impl Compiler<'_> {
         }
     }
 
-    /// Calls Resolver::declare_variable() with the previous Token's lexemme (TokenIdentifier) 
+    /// Calls Resolver::declare_variable() with the previous Token's lexemme (TokenIdentifier)
     fn declare_variable(&mut self) {
         let str_val = self.previous().lexemme.clone();
         let success = self.resolver.declare_variable(str_val);
         if !success {
-            self.error("Variable with this name already declared in this scope"); 
+            self.error("Variable with this name already declared in this scope");
         }
     }
 
@@ -225,23 +241,23 @@ impl Compiler<'_> {
             self.error("Invalid assignment target");
         }
     }
-    
+
     fn call_parse_fn(&mut self, parse_fn: ParseFn, can_assign: bool) {
         match parse_fn {
-            ParseFn::None       => self.error("Expected expression"),
-            ParseFn::Binary     => self.binary(),
-            ParseFn::Grouping   => self.grouping(),
-            ParseFn::Unary      => self.unary(),
-            ParseFn::Number     => self.number(),
-            ParseFn::Literal    => self.literal(),
-            ParseFn::String     => self.string(),
-            ParseFn::Variable   => self.variable(can_assign),
-            ParseFn::And        => self.and_operator(),
-            ParseFn::Or         => self.or_operator(),
-            ParseFn::Call       => self.call(),
-            ParseFn::Dot        => self.dot(can_assign),
-            ParseFn::This       => self.this(),
-            ParseFn::Super      => self.super_(),
+            ParseFn::None => self.error("Expected expression"),
+            ParseFn::Binary => self.binary(),
+            ParseFn::Grouping => self.grouping(),
+            ParseFn::Unary => self.unary(),
+            ParseFn::Number => self.number(),
+            ParseFn::Literal => self.literal(),
+            ParseFn::String => self.string(),
+            ParseFn::Variable => self.variable(can_assign),
+            ParseFn::And => self.and_operator(),
+            ParseFn::Or => self.or_operator(),
+            ParseFn::Call => self.call(),
+            ParseFn::Dot => self.dot(can_assign),
+            ParseFn::This => self.this(),
+            ParseFn::Super => self.super_(),
         }
     }
 
@@ -255,7 +271,9 @@ impl Compiler<'_> {
         } else {
             self.statement();
         }
-        if self.panic_mode { self.synchronize(); }
+        if self.panic_mode {
+            self.synchronize();
+        }
     }
 
     fn fun_declaration(&mut self) {
@@ -266,7 +284,10 @@ impl Compiler<'_> {
     }
 
     fn class_declaration(&mut self) {
-        self.consume(TokenType::TokenIdentifier, "Expected class name after keyword 'class'");
+        self.consume(
+            TokenType::TokenIdentifier,
+            "Expected class name after keyword 'class'",
+        );
         let name = self.previous().lexemme.clone();
         let name_index = self.identifier_constant(&name);
         self.declare_variable();
@@ -277,7 +298,7 @@ impl Compiler<'_> {
 
         let class_index = self.classes.len() - 1;
         self.current_class = Some(class_index);
-        
+
         self.emit_instr(OpCode::OpClass(class_index));
         self.define_variable(name_index);
 
@@ -290,7 +311,7 @@ impl Compiler<'_> {
             // Note: I like this bit of code, it is a really nice shiny implementaiton of superclasses that doesnt require any new opcodes and does not require any copying of the FunctionChunks. Fucking sick
             let superclass_name = &self.previous().lexemme.clone();
             let mut superclass_index: Option<usize> = None;
-            for (i,class_def) in self.classes.iter().enumerate() {
+            for (i, class_def) in self.classes.iter().enumerate() {
                 if class_def.name.eq(superclass_name) {
                     superclass_index = Some(i);
                 }
@@ -304,11 +325,14 @@ impl Compiler<'_> {
                 Some(i) => {
                     let superclass = &self.classes[i];
                     for (name, fn_index) in superclass.methods.clone().iter() {
-                        self.current_class().methods.insert(name.clone(), *fn_index); // Inherit all the methods by just copying in all the fn_indices, nicely handles multiple levels of inheritence
+                        self.current_class().methods.insert(name.clone(), *fn_index);
+                        // Inherit all the methods by just copying in all the fn_indices, nicely handles multiple levels of inheritence
                     }
                     self.current_class().superclass = superclass_index;
-                },
-                None => self.error(format!("Unable to resolve superclass {}", superclass_name).as_str()),
+                }
+                None => {
+                    self.error(format!("Unable to resolve superclass {}", superclass_name).as_str())
+                }
             }
         }
 
@@ -323,7 +347,7 @@ impl Compiler<'_> {
 
     // Note: Since this constantly confuses me, I'm gonna keep a note here so that I don't forget how variables work in rlox
     // Globals: The opcodes GetGlobal and SetGlobal take a LoxString from the constants vec and map it into a HashMap in the VM, no resolving/checking is done before runtime
-    // Locals: Local variables live on the stack and since they are the ONLY values that do not get popped after statements, we know that they must live at the very bottom of the stack, 
+    // Locals: Local variables live on the stack and since they are the ONLY values that do not get popped after statements, we know that they must live at the very bottom of the stack,
     // and thus we can just raw index from the bottom of the stack to the index of the variable by looking at how many locals have been defined in this scope
     fn var_declaration(&mut self) {
         let global = self.parse_variable("Expected variable name");
@@ -332,12 +356,15 @@ impl Compiler<'_> {
         } else {
             self.emit_instr(OpCode::OpNil);
         }
-        self.consume(TokenType::TokenSemicolon, "Expected ';' after variable declaration");
+        self.consume(
+            TokenType::TokenSemicolon,
+            "Expected ';' after variable declaration",
+        );
         self.define_variable(global);
     }
 
     /// Match the identifier token and pass it into identifier_constant to be added to the chunk if current scope is global
-    /// 
+    ///
     /// Calls declare_variable() if the current scope is local
     fn parse_variable(&mut self, error_msg: &str) -> usize {
         self.consume(TokenType::TokenIdentifier, error_msg);
@@ -352,10 +379,11 @@ impl Compiler<'_> {
     }
 
     /// Add a string to the chunk as a constant and return the index
-    /// 
+    ///
     /// Only used for global variables
     fn identifier_constant(&mut self, str_val: &String) -> usize {
-        self.current_chunk().add_constant(Value::LoxString(str_val.to_string()))
+        self.current_chunk()
+            .add_constant(Value::LoxString(str_val.to_string()))
     }
 
     /// Emits the instruction to define the global variable
@@ -390,7 +418,10 @@ impl Compiler<'_> {
 
     fn print_statement(&mut self) {
         self.expression();
-        self.consume(TokenType::TokenSemicolon, "Expected ';' after value in print statement");
+        self.consume(
+            TokenType::TokenSemicolon,
+            "Expected ';' after value in print statement",
+        );
         self.emit_instr(OpCode::OpPrint);
     }
 
@@ -435,10 +466,13 @@ impl Compiler<'_> {
 
     fn while_statement(&mut self) {
         let loop_start = self.current_chunk().code.len() - 1;
-        
+
         self.consume(TokenType::TokenLeftParen, "Expected '(' after 'while'");
         self.expression();
-        self.consume(TokenType::TokenRightParen, "Expected ')' after loop condition");
+        self.consume(
+            TokenType::TokenRightParen,
+            "Expected ')' after loop condition",
+        );
 
         let exit_jump = self.emit_jif();
 
@@ -452,7 +486,7 @@ impl Compiler<'_> {
 
     fn for_statement(&mut self) {
         self.consume(TokenType::TokenLeftParen, "Expected '(' after 'for'");
-        
+
         self.resolver.begin_scope();
 
         // First clause: Can be var declaration or expresion
@@ -470,7 +504,10 @@ impl Compiler<'_> {
         // Loop conditional
         if !self.match_cur(TokenType::TokenSemicolon) {
             self.expression();
-            self.consume(TokenType::TokenSemicolon, "Expected ';' after loop condition");
+            self.consume(
+                TokenType::TokenSemicolon,
+                "Expected ';' after loop condition",
+            );
             exit_jump = Some(self.emit_jif());
             self.emit_instr(OpCode::OpPop); // Pop condition if we didn't jump
         } // Note: if this conditional is not found, then there is no way to jump out of the loop
@@ -482,7 +519,10 @@ impl Compiler<'_> {
             let increment_start = self.current_chunk().code.len() - 1;
             self.expression(); // Parse the increment expression
             self.emit_instr(OpCode::OpPop); // Pop the remaining value
-            self.consume(TokenType::TokenRightParen, "Expected ')' after for loop clauses");
+            self.consume(
+                TokenType::TokenRightParen,
+                "Expected ')' after for loop clauses",
+            );
 
             self.emit_loop(loop_start); // Loop back to the start after increment
             loop_start = increment_start; // Make the body go to the start of the increment instead of the start of the loop
@@ -507,7 +547,7 @@ impl Compiler<'_> {
         }
         self.consume(TokenType::TokenRightBrace, "Expected '}' after block"); // Fails if we hit EOF instead
     }
-    
+
     /// Parses a 'this' keyword by just treating it as a special class-only variable that will be magically instantiated
     /// Our resolver will automatically put the 'this' varaible in locals slot 0 for any methods, so this (ha) will always result in a Get/Set Local op being emitted
     fn this(&mut self) {
@@ -524,10 +564,12 @@ impl Compiler<'_> {
         } else if self.current_class().superclass == None {
             self.error("Cannot use keyword 'super' in a class which does not inherit a class");
         }
-        
 
         self.consume(TokenType::TokenDot, "Expected '.' after 'super'");
-        self.consume(TokenType::TokenIdentifier, "Expected superclass method name");
+        self.consume(
+            TokenType::TokenIdentifier,
+            "Expected superclass method name",
+        );
         let name = self.previous().lexemme.clone();
         let name_index = self.identifier_constant(&name);
         //self.emit_instr(OpCode::OpGetLocal(0)); // Fixme: Slightly sketchy hack to throw the LoxPointer into the right spot.
@@ -539,12 +581,12 @@ impl Compiler<'_> {
         self.consume(TokenType::TokenIdentifier, "Expected method name");
         let name = self.previous().lexemme.clone();
 
-        let index =  if name.eq(&String::from("init")) {
+        let index = if name.eq(&String::from("init")) {
             self.function(FunctionType::Initializer)
         } else {
             self.function(FunctionType::Method)
         };
-        self.current_class().methods.insert(name,index); // Note: This provides method overriding since we do not check if the name already existed in the map
+        self.current_class().methods.insert(name, index); // Note: This provides method overriding since we do not check if the name already existed in the map
 
         // NOTE!! this way of doing methods does NOT bind closures... So there is a very very stupid way this could go wrong
         // Something like fun thing() { class Inner { method() { // use a local variable from thing in here }}}
@@ -563,7 +605,10 @@ impl Compiler<'_> {
         let index = self.start_child(fun_type);
         self.resolver.begin_scope();
 
-        self.consume(TokenType::TokenLeftParen, "Expected '(' after function name");
+        self.consume(
+            TokenType::TokenLeftParen,
+            "Expected '(' after function name",
+        );
         if !self.check(TokenType::TokenRightParen) {
             loop {
                 let cur_function = self.current_fn();
@@ -574,16 +619,25 @@ impl Compiler<'_> {
 
                 let param_constant = self.parse_variable("Expected parameter name");
                 self.define_variable(param_constant);
-                if !self.match_cur(TokenType::TokenComma) { break; }
+                if !self.match_cur(TokenType::TokenComma) {
+                    break;
+                }
             }
         }
-        self.consume(TokenType::TokenRightParen, "Expected ')' after function parameters");
-        
-        self.consume(TokenType::TokenLeftBrace, "Expected '{' before function body");
-        self.block();        
+        self.consume(
+            TokenType::TokenRightParen,
+            "Expected ')' after function parameters",
+        );
+
+        self.consume(
+            TokenType::TokenLeftBrace,
+            "Expected '{' before function body",
+        );
+        self.block();
         self.end_child();
 
-        if fun_type != FunctionType::Method && fun_type != FunctionType::Initializer { // We don't need this for methods because they are statically loaded into the ClassChunk, not at runtime on the stack
+        if fun_type != FunctionType::Method && fun_type != FunctionType::Initializer {
+            // We don't need this for methods because they are statically loaded into the ClassChunk, not at runtime on the stack
             self.emit_constant(Value::LoxFunction(index));
             self.emit_instr(OpCode::OpClosure);
         }
@@ -607,7 +661,7 @@ impl Compiler<'_> {
         self.emit_instr(OpCode::OpPop);
         self.parse_precedence(Precedence::PrecAnd); // Parse right hand side of the infix expression
         self.patch_jump(end_jump); // Jump to after it if the first argument was already false, leaving the false value on the top of the stack to be the result
-        // Otherwise the first argument is true, so the value of the whole and is equal to the value of the second argument, so just proceed as normal
+                                   // Otherwise the first argument is true, so the value of the whole and is equal to the value of the second argument, so just proceed as normal
     }
 
     fn or_operator(&mut self) {
@@ -634,51 +688,60 @@ impl Compiler<'_> {
             TokenType::TokenFalse => self.emit_instr(OpCode::OpFalse),
             TokenType::TokenTrue => self.emit_instr(OpCode::OpTrue),
             TokenType::TokenNil => self.emit_instr(OpCode::OpNil),
-            _ => panic!("Unreachable state reached, attempted to make a literal out of a non-literal type?"),
+            _ => panic!(
+                "Unreachable state reached, attempted to make a literal out of a non-literal type?"
+            ),
         }
     }
 
     fn string(&mut self) {
         let str_val = self.previous().lexemme.clone();
-        let cleaned = str_val[1..str_val.len() -1].to_string();
+        let cleaned = str_val[1..str_val.len() - 1].to_string();
 
         self.emit_constant(Value::LoxString(cleaned));
     }
 
     /// Parse an identifier that we know to be a variable
-    /// 
+    ///
     /// Eventually emits a get instr or a set instr + the instructions to process the expr
-    /// 
+    ///
     /// Note: Uses named_variable to do all the heavy lifting
     fn variable(&mut self, can_assign: bool) {
         let name = &self.previous().lexemme.clone();
         self.named_variable(name, can_assign)
     }
 
-    // Note: parse_precedence with TokenIdentifier => variable() -> named_variable(previous.lexemme) 
+    // Note: parse_precedence with TokenIdentifier => variable() -> named_variable(previous.lexemme)
     // Could be a getter or a setter, so lookahead for a '='
-    /// Helper function for variable. 
+    /// Helper function for variable.
     /// 1. Determine if this is a local var, upvalue, or global and make the get and set ops
     /// 2. Determine if this is a get or a set based on can_assign and the existence of a '='
     fn named_variable(&mut self, name: &String, can_assign: bool) {
         let local_arg = match self.resolver.resolve_local(name) {
             Ok(opt) => opt,
-            Err(_) => { 
-                self.error("Cannot read local variable in its own initializer"); 
-                return; 
-            },
+            Err(_) => {
+                self.error("Cannot read local variable in its own initializer");
+                return;
+            }
         };
 
         // Figure out which type of get/set OpCodes we want
-        let (get_op, set_op) = if let Some(local_index) = local_arg  {
-            (OpCode::OpGetLocal(local_index), OpCode::OpSetLocal(local_index))
-
+        let (get_op, set_op) = if let Some(local_index) = local_arg {
+            (
+                OpCode::OpGetLocal(local_index),
+                OpCode::OpSetLocal(local_index),
+            )
         } else if let Some(upvalue_index) = self.resolver.resolve_upvalue(name) {
-            (OpCode::OpGetUpvalue(upvalue_index), OpCode::OpSetUpvalue(upvalue_index))
-
+            (
+                OpCode::OpGetUpvalue(upvalue_index),
+                OpCode::OpSetUpvalue(upvalue_index),
+            )
         } else {
             let global_arg = self.identifier_constant(name); // Does NOT check at compile time if this variable can be resolved
-            (OpCode::OpGetGlobal(global_arg), OpCode::OpSetGlobal(global_arg))
+            (
+                OpCode::OpGetGlobal(global_arg),
+                OpCode::OpSetGlobal(global_arg),
+            )
         };
 
         // Figure out if we want to use the get or the set from the pair of possible ops we determined earlier
@@ -695,13 +758,13 @@ impl Compiler<'_> {
         self.consume(TokenType::TokenRightParen, "Expected ')' after expression");
     }
 
-    fn unary(&mut self) { 
+    fn unary(&mut self) {
         let operator_type = self.previous().token_type;
         self.parse_precedence(Precedence::PrecUnary); // evaluate the expression in the unary
         match operator_type {
             TokenType::TokenMinus => self.emit_instr(OpCode::OpNegate),
             TokenType::TokenBang => self.emit_instr(OpCode::OpNot),
-            _ => () // Error?
+            _ => (), // Error?
         }
     }
 
@@ -713,17 +776,17 @@ impl Compiler<'_> {
 
         // Stack based vm, so emit the binary instr after
         match operator_type {
-            TokenType::TokenPlus        => self.emit_instr(OpCode::OpAdd),
-            TokenType::TokenMinus       => self.emit_instr(OpCode::OpSubtract),
-            TokenType::TokenStar        => self.emit_instr(OpCode::OpMultiply),
-            TokenType::TokenSlash       => self.emit_instr(OpCode::OpDivide),
-            TokenType::TokenBangEqual   => self.emit_instrs(&[OpCode::OpEqual, OpCode::OpNot]),
-            TokenType::TokenEqualEqual  => self.emit_instr(OpCode::OpEqual),
-            TokenType::TokenGreater     => self.emit_instr(OpCode::OpGreater),
+            TokenType::TokenPlus => self.emit_instr(OpCode::OpAdd),
+            TokenType::TokenMinus => self.emit_instr(OpCode::OpSubtract),
+            TokenType::TokenStar => self.emit_instr(OpCode::OpMultiply),
+            TokenType::TokenSlash => self.emit_instr(OpCode::OpDivide),
+            TokenType::TokenBangEqual => self.emit_instrs(&[OpCode::OpEqual, OpCode::OpNot]),
+            TokenType::TokenEqualEqual => self.emit_instr(OpCode::OpEqual),
+            TokenType::TokenGreater => self.emit_instr(OpCode::OpGreater),
             TokenType::TokenGreaterEqual => self.emit_instrs(&[OpCode::OpLess, OpCode::OpNot]),
-            TokenType::TokenLess        => self.emit_instr(OpCode::OpLess),
-            TokenType::TokenLessEqual   => self.emit_instrs(&[OpCode::OpGreater, OpCode::OpNot]),
-            _ => () // error?
+            TokenType::TokenLess => self.emit_instr(OpCode::OpLess),
+            TokenType::TokenLessEqual => self.emit_instrs(&[OpCode::OpGreater, OpCode::OpNot]),
+            _ => (), // error?
         }
     }
 
@@ -745,18 +808,27 @@ impl Compiler<'_> {
                 }
                 arg_count += 1;
 
-                if !self.match_cur(TokenType::TokenComma) { break; }
-            } 
+                if !self.match_cur(TokenType::TokenComma) {
+                    break;
+                }
+            }
         }
-        self.consume(TokenType::TokenRightParen, "Expected ')' after function argument list");
+        self.consume(
+            TokenType::TokenRightParen,
+            "Expected ')' after function argument list",
+        );
         arg_count
     }
 
     fn dot(&mut self, can_assign: bool) {
-        self.consume(TokenType::TokenIdentifier, "Expected property name after '.'");
+        self.consume(
+            TokenType::TokenIdentifier,
+            "Expected property name after '.'",
+        );
         let name_index = self.identifier_constant(&self.previous().lexemme.clone());
-        
-        if can_assign && self.match_cur(TokenType::TokenEqual) { // We check can_assign so that a + b.c = 3 does not invalidly emit a set op
+
+        if can_assign && self.match_cur(TokenType::TokenEqual) {
+            // We check can_assign so that a + b.c = 3 does not invalidly emit a set op
             // Setter
             self.expression();
             self.emit_instr(OpCode::OpSetProperty(name_index));
@@ -775,12 +847,13 @@ impl Compiler<'_> {
     /// Sets the compiler to generate a new function chunk for the next segment of code
     fn start_child(&mut self, function_type: FunctionType) -> usize {
         let function_name = self.previous().lexemme.clone();
-        self.functions.push(FunctionChunk::new(Some(function_name), 0, function_type));
+        self.functions
+            .push(FunctionChunk::new(Some(function_name), 0, function_type));
         self.resolver.push(function_type);
         self.parent_functions.push(self.current_function);
         self.current_function = self.functions.len() - 1;
 
-        self.functions.len() - 1 
+        self.functions.len() - 1
     }
 
     /// Switches the current chunk out of the new function def
@@ -819,7 +892,7 @@ impl Compiler<'_> {
     }
 
     // Note: is this an expensive move (moving self into this function) ? Is it less expensive to just move/copy the FunctionChunks afterwards?
-    pub fn compile(mut self) -> Option<CompilationResult> { 
+    pub fn compile(mut self) -> Option<CompilationResult> {
         while !self.match_cur(TokenType::TokenEOF) {
             self.declaration();
         }
@@ -827,7 +900,9 @@ impl Compiler<'_> {
 
         if DEBUG {
             for fn_chunk in self.functions.iter() {
-                if fn_chunk.fn_type != FunctionType::Method && fn_chunk.fn_type != FunctionType::Initializer {
+                if fn_chunk.fn_type != FunctionType::Method
+                    && fn_chunk.fn_type != FunctionType::Initializer
+                {
                     disassemble_fn_chunk(&fn_chunk);
                 }
             }
@@ -837,13 +912,13 @@ impl Compiler<'_> {
             }
         }
 
-        if !self.had_error { 
+        if !self.had_error {
             Some(CompilationResult {
                 classes: self.classes,
                 functions: self.functions,
-            }) 
-        } else { 
-            None 
+            })
+        } else {
+            None
         }
     }
 }

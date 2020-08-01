@@ -1,22 +1,22 @@
 mod chunk;
+mod compiler;
 mod debug;
+mod gc;
+mod native;
+mod prec;
+mod resolver;
+mod scanner;
 mod value;
 mod vm;
-mod compiler;
-mod scanner;
-mod prec;
-mod native;
-mod resolver;
-mod gc;
 
-use crate::vm::{VM, ExecutionMode, InterpretResult};
-use crate::compiler::{Compiler};
-use crate::resolver::{Resolver};
+use crate::compiler::Compiler;
 use crate::debug::DEBUG;
+use crate::resolver::Resolver;
+use crate::vm::{ExecutionMode, InterpretResult, VM};
 
 use std::env;
-use std::io;
 use std::fs::File;
+use std::io;
 use std::io::prelude::*;
 use std::path::Path;
 
@@ -40,7 +40,7 @@ fn repl() {
             Ok(_) => {
                 interpret(&input);
             }
-            Err(error) => println!("Failed to get stdin: {}", error)
+            Err(error) => println!("Failed to get stdin: {}", error),
         }
         input.clear();
     }
@@ -70,6 +70,10 @@ fn interpret(source: &String) -> InterpretResult {
         return InterpretResult::InterpretCompileError;
     }
 
-    let vm = if DEBUG { VM::new(ExecutionMode::Trace, result.unwrap()) } else { VM::new(ExecutionMode::Default, result.unwrap()) };
+    let vm = if DEBUG {
+        VM::new(ExecutionMode::Trace, result.unwrap())
+    } else {
+        VM::new(ExecutionMode::Default, result.unwrap())
+    };
     vm.run()
 }

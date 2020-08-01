@@ -1,5 +1,5 @@
+use crate::resolver::UpValue;
 use crate::value::Value;
-use crate::resolver::{UpValue};
 
 use std::collections::HashMap;
 
@@ -7,23 +7,22 @@ use std::collections::HashMap;
 pub enum OpCode {
     OpReturn,
     OpPop,
-    
+
     OpDefineGlobal(usize), // Index of the LoxString name for this variable name in the constants vec
-    OpGetGlobal(usize), // ^
-    OpSetGlobal(usize), // ^
-    OpGetSuper(usize), //  ^
-    
+    OpGetGlobal(usize),    // ^
+    OpSetGlobal(usize),    // ^
+    OpGetSuper(usize),     //  ^
+
     OpGetLocal(usize), // Index on the stack
     OpSetLocal(usize), // ^
 
     OpInvoke(usize, usize), // Combines a GetProperty and a Call. Contains the exact same information. First usize is the index for the property name, second is for the arity
     OpGetProperty(usize), // Index of the LoxString variable in the constants vec corresponding with the property name
     OpSetProperty(usize), // ^
-                          // Optimization todo: Fix this LoxString storing in the constants vec. Either only save one, or get rid of it entierly by resolving the globals/instance slot at compilation
-
+    // Optimization todo: Fix this LoxString storing in the constants vec. Either only save one, or get rid of it entierly by resolving the globals/instance slot at compilation
     OpGetUpvalue(usize), // upvalue index for a closure
     OpSetUpvalue(usize), // ^
-    OpClosure, // Wraps the top value of the stack (must be a LoxFunction) in a LoxClosure, capturing the appropriate UpValues at the same time 
+    OpClosure, // Wraps the top value of the stack (must be a LoxFunction) in a LoxClosure, capturing the appropriate UpValues at the same time
 
     OpJump(usize), // Jump ip offset
     OpJumpIfFalse(usize),
@@ -55,7 +54,7 @@ pub enum OpCode {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Instr {
     pub op_code: OpCode,
-    pub line_num: usize
+    pub line_num: usize,
 }
 
 #[derive(Debug)]
@@ -78,14 +77,14 @@ impl Chunk {
         let val = self.constants.get(index);
         match val {
             Some(x) => x.clone(),
-            None => panic!("VM panic: Constant with given index not found") // add runtime failure in here later
+            None => panic!("VM panic: Constant with given index not found"), // add runtime failure in here later
         }
     }
 
     pub fn new() -> Chunk {
         Chunk {
             code: Vec::new(),
-            constants: Vec::new()
+            constants: Vec::new(),
         }
     }
 }

@@ -1,0 +1,20 @@
+class Doughnut {
+  cook() {
+    print "Dunk in the fryer.";
+  }
+}
+
+class Cruller < Doughnut {
+  cook() {
+    print "Make the cruller";
+    super.cook();
+    this.finish();
+  }
+
+  finish() {
+    print "Glaze with icing";
+  }
+}
+
+var test = Cruller();
+test.cook();

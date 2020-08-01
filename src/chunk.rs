@@ -11,6 +11,7 @@ pub enum OpCode {
     OpDefineGlobal(usize), // Index of the LoxString name for this variable name in the constants vec
     OpGetGlobal(usize), // ^
     OpSetGlobal(usize), // ^
+    OpGetSuper(usize), //  ^
     
     OpGetLocal(usize), // Index on the stack
     OpSetLocal(usize), // ^
@@ -128,6 +129,7 @@ impl FunctionChunk {
 pub struct ClassChunk {
     pub name: String,
     pub methods: HashMap<String, usize>,
+    pub superclass: Option<usize>,
 }
 
 impl ClassChunk {
@@ -135,6 +137,7 @@ impl ClassChunk {
         ClassChunk {
             name,
             methods: HashMap::new(),
+            superclass: None,
         }
     }
 }

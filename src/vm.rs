@@ -501,12 +501,12 @@ impl VM {
                     match state.deref_into(pointer_val, HeapObjType::LoxInstance) {
                         Ok(instance) => {
                             let instance = instance.as_instance();
-                            if instance.fields.contains_key(&name) {
+                            if instance.fields.contains_key(&name) { // See if we tried to get a field
                                 let value = instance.fields.get(&name).unwrap().clone();
                                 state.pop(); // Remove the instance
                                 state.push(value); // Replace with the value
                             } else {
-                                let class_chunk = &self.classes[instance.class];
+                                let class_chunk = &self.classes[instance.class]; // if not a field, then we must be getting a function. Create a LoxBoundMethod for it
                                 if class_chunk.methods.contains_key(&name) {
                                     let bound_value = ObjBoundMethod { 
                                         method: *class_chunk.methods.get(&name).unwrap(), 
@@ -548,6 +548,35 @@ impl VM {
                     state.pop(); // Instance
                     state.push(val); // Return the value to the stack
                 },
+                // This is almost identical to OpGetProperty, but it goes one extra jump to get the method from the superclass, and binds it to itself
+                OpCode::OpGetSuper(index) => {
+                    let name = self.get_variable_name(index, &state); // Fixme: why the fuck do i have to pass the entire state here? Don't we just need the current frame
+                    let pointer_val = state.peek();
+
+                    // Todo: Combine this and SetProperty into a macro so it doesn't hurt me everytime i have to read this
+                    match state.deref_into(pointer_val, HeapObjType::LoxInstance) {
+                        Ok(instance) => {
+                            let instance = instance.as_instance();
+                            let class_chunk = &self.classes[instance.class];
+                            if class_chunk.superclass == None {
+                                self.runtime_error("Cannot use keyword 'super' in a class that does not have a superclass", &state); // Note: I think the compiiler can catch this
+                            }
+                            let superclass_chunk = &self.classes[class_chunk.superclass.unwrap()];
+                            if superclass_chunk.methods.contains_key(&name) {
+                                let bound_value = ObjBoundMethod { 
+                                    method: *superclass_chunk.methods.get(&name).unwrap(), 
+                                    pointer: pointer_val.as_pointer(),
+                                };
+                                state.pop(); // Remove the instance
+                                state.push(Value::LoxBoundMethod(bound_value)); // Replace with bound method
+                            } else {
+                                self.runtime_error(format!("Undefined superclass method '{}' for {:?}", name, instance).as_str(), &state);
+                                return InterpretResult::InterpretRuntimeError;
+                            }
+                        },
+                        Err(_) => { panic!("VM panic! Failed to obtain instance LoxPointer for super"); }, 
+                    }
+                }
 
                 OpCode::OpGetUpvalue(index) => { state.push_upvalue(index); },
                 OpCode::OpSetUpvalue(index) => { state.set_upvalue(index); },

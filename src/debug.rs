@@ -1,13 +1,28 @@
-use crate::chunk::{Chunk, Instr, OpCode};
+use crate::chunk::{Chunk, FunctionChunk, ClassChunk, Instr, OpCode};
 use crate::value::Value;
 
 pub const DEBUG: bool = false;
 
-pub fn disassemble_chunk(chunk: &Chunk, name: &Option<String>) {
-    match name {
+pub fn disassemble_class_chunk(class_chunk: &ClassChunk, function_defs: &Vec<FunctionChunk>, class_defs: &Vec<ClassChunk>) {
+    match class_chunk.superclass {
+        Some(i) => eprintln!("== <class {} | subclass of {}> ===============", &class_chunk.name, &class_defs[i].name),
+        None => eprintln!("== <class {}> ===============", &class_chunk.name),
+    }
+    for (name, fn_index) in class_chunk.methods.iter() {
+        eprintln!("== <method {}> ============", name);
+        disassemble_chunk(&function_defs[*fn_index].chunk);
+    }
+}
+
+pub fn disassemble_fn_chunk(fn_chunk: &FunctionChunk) {
+    match &fn_chunk.name {
         Some(name) => eprintln!("== <fn {}> ==============", name),
         None => eprintln!("== <script> =============="),
     }
+    disassemble_chunk(&fn_chunk.chunk);
+}
+
+fn disassemble_chunk(chunk: &Chunk) {
     eprintln!("Constants");
     for (i, val) in chunk.constants.iter().enumerate() {
         eprintln!("{}\t{:?}", i, val);
@@ -30,8 +45,7 @@ pub fn disassemble_instruction(instr: &Instr, chunk: &Chunk, instr_offset: usize
         OpCode::OpConstant(index) => eprintln!("\t{:?} => {:?}", instr.op_code, chunk.constants.get(index).unwrap()), 
         OpCode::OpDefineGlobal(index) | 
             OpCode::OpSetGlobal(index) |
-            OpCode::OpGetGlobal(index) |
-            OpCode::OpClass(index) => {
+            OpCode::OpGetGlobal(index) => {
                 if let Value::LoxString(name) = chunk.constants.get(index).unwrap() {
                     eprintln!("\t{:?} => name: {:?}", instr.op_code, name)
                 }

@@ -182,8 +182,9 @@ impl HeapObjVal {
 /// Runtime instantiation of class definitions
 #[derive(Debug, PartialEq)]
 pub struct ObjInstance {
-    pub class: usize,
-    pub fields: HashMap<String,Value>, // Possible improvement: Resolve all the field references at compile time and replace this with just a Vec
+    pub class: usize, // Which class was this instance made from?
+    pub fields: HashMap<String,Value>, // Stores the field values. FunctionChunks are stored in the ClassChunk, which is not ideal since it adds an extra vec lookup before getting to the function
+    // Possible improvement: Resolve all the field references at compile time and replace this with just a Vec
 }
 
 impl ObjInstance {

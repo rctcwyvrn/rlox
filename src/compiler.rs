@@ -2,7 +2,7 @@ use crate::scanner::{Scanner, Token, TokenType};
 use crate::chunk::{OpCode, Instr, Chunk, FunctionChunk, FunctionType, ClassChunk};
 use crate::value::Value;
 use crate::prec::{Precedence, ParseFn, get_rule};
-use crate::debug::{DEBUG, disassemble_chunk};
+use crate::debug::{DEBUG, disassemble_fn_chunk, disassemble_class_chunk};
 use crate::resolver::{Resolver};
 
 #[derive(Debug)]
@@ -241,6 +241,7 @@ impl Compiler<'_> {
             ParseFn::Call       => self.call(),
             ParseFn::Dot        => self.dot(can_assign),
             ParseFn::This       => self.this(),
+            ParseFn::Super      => self.super_(),
         }
     }
 
@@ -279,6 +280,37 @@ impl Compiler<'_> {
         
         self.emit_instr(OpCode::OpClass(class_index));
         self.define_variable(name_index);
+
+        // Check for superclass
+        if self.match_cur(TokenType::TokenLess) {
+            self.consume(TokenType::TokenIdentifier, "Expected superclass name");
+            // Resolve the superclass methods entierly at compile time instead of runtime because it fits how everything else works
+            // However because the compiler is single pass, you can only inherit a class that has already been defined
+            // Note: we know that all the methods the superclass will ever own must already be defined, since it will have had the same superclass resolution at compile time < Lox classes are closed
+            // Note: I like this bit of code, it is a really nice shiny implementaiton of superclasses that doesnt require any new opcodes and does not require any copying of the FunctionChunks. Fucking sick
+            let superclass_name = &self.previous().lexemme.clone();
+            let mut superclass_index: Option<usize> = None;
+            for (i,class_def) in self.classes.iter().enumerate() {
+                if class_def.name.eq(superclass_name) {
+                    superclass_index = Some(i);
+                }
+            }
+
+            if superclass_index == self.current_class {
+                self.error("A class cannot inherit itself");
+            }
+
+            match superclass_index {
+                Some(i) => {
+                    let superclass = &self.classes[i];
+                    for (name, fn_index) in superclass.methods.clone().iter() {
+                        self.current_class().methods.insert(name.clone(), *fn_index); // Inherit all the methods by just copying in all the fn_indices, nicely handles multiple levels of inheritence
+                    }
+                    self.current_class().superclass = superclass_index;
+                },
+                None => self.error(format!("Unable to resolve superclass {}", superclass_name).as_str()),
+            }
+        }
 
         self.consume(TokenType::TokenLeftBrace, "Expected '{' before class body");
         while !self.check(TokenType::TokenRightBrace) && !self.check(TokenType::TokenEOF) {
@@ -476,11 +508,31 @@ impl Compiler<'_> {
         self.consume(TokenType::TokenRightBrace, "Expected '}' after block"); // Fails if we hit EOF instead
     }
     
+    /// Parses a 'this' keyword by just treating it as a special class-only variable that will be magically instantiated
+    /// Our resolver will automatically put the 'this' varaible in locals slot 0 for any methods, so this (ha) will always result in a Get/Set Local op being emitted
     fn this(&mut self) {
         if self.current_class == None {
             self.error("Cannot use keyword 'this' outside of a class");
         }
         self.variable(false);
+    }
+
+    /// Consumes super.method_name and emits uhhhh
+    fn super_(&mut self) {
+        if self.current_class == None {
+            self.error("Cannot use keyword 'super' outside of a class");
+        } else if self.current_class().superclass == None {
+            self.error("Cannot use keyword 'super' in a class which does not inherit a class");
+        }
+        
+
+        self.consume(TokenType::TokenDot, "Expected '.' after 'super'");
+        self.consume(TokenType::TokenIdentifier, "Expected superclass method name");
+        let name = self.previous().lexemme.clone();
+        let name_index = self.identifier_constant(&name);
+        //self.emit_instr(OpCode::OpGetLocal(0)); // Fixme: Slightly sketchy hack to throw the LoxPointer into the right spot.
+        self.named_variable(&String::from("this"), false); // Slightly better?
+        self.emit_instr(OpCode::OpGetSuper(name_index));
     }
 
     fn method(&mut self) {
@@ -492,7 +544,7 @@ impl Compiler<'_> {
         } else {
             self.function(FunctionType::Method)
         };
-        self.current_class().methods.insert(name,index);
+        self.current_class().methods.insert(name,index); // Note: This provides method overriding since we do not check if the name already existed in the map
 
         // NOTE!! this way of doing methods does NOT bind closures... So there is a very very stupid way this could go wrong
         // Something like fun thing() { class Inner { method() { // use a local variable from thing in here }}}
@@ -593,6 +645,11 @@ impl Compiler<'_> {
         self.emit_constant(Value::LoxString(cleaned));
     }
 
+    /// Parse an identifier that we know to be a variable
+    /// 
+    /// Eventually emits a get instr or a set instr + the instructions to process the expr
+    /// 
+    /// Note: Uses named_variable to do all the heavy lifting
     fn variable(&mut self, can_assign: bool) {
         let name = &self.previous().lexemme.clone();
         self.named_variable(name, can_assign)
@@ -600,6 +657,9 @@ impl Compiler<'_> {
 
     // Note: parse_precedence with TokenIdentifier => variable() -> named_variable(previous.lexemme) 
     // Could be a getter or a setter, so lookahead for a '='
+    /// Helper function for variable. 
+    /// 1. Determine if this is a local var, upvalue, or global and make the get and set ops
+    /// 2. Determine if this is a get or a set based on can_assign and the existence of a '='
     fn named_variable(&mut self, name: &String, can_assign: bool) {
         let local_arg = match self.resolver.resolve_local(name) {
             Ok(opt) => opt,
@@ -767,11 +827,13 @@ impl Compiler<'_> {
 
         if DEBUG {
             for fn_chunk in self.functions.iter() {
-                disassemble_chunk(&fn_chunk.chunk, &fn_chunk.name);
+                if fn_chunk.fn_type != FunctionType::Method && fn_chunk.fn_type != FunctionType::Initializer {
+                    disassemble_fn_chunk(&fn_chunk);
+                }
             }
 
             for class_chunk in self.classes.iter() {
-                eprintln!("{:?}", class_chunk);
+                disassemble_class_chunk(&class_chunk, &self.functions, &self.classes);
             }
         }
 

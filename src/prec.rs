@@ -1,6 +1,7 @@
 use crate::scanner::TokenType;
 
 // Please forgive me for my sins, do not read this file :c 
+// This pratt parser is also just black magic to me, I don't think I could correctly reimplement it for a personal language unfortunately
 
 #[derive(Debug, PartialEq, PartialOrd)]
 pub enum Precedence {

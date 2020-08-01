@@ -149,7 +149,7 @@ impl GC {
         }
     }
 
-    fn sweep(&mut self) {
+    fn sweep(&mut self) -> Option<usize> {
         let mut to_free = Vec::new();
         let mut shrinkable_to: Option<usize> = None;
 
@@ -174,27 +174,29 @@ impl GC {
             self.free(*index);
         }
 
-        // Shrink the instances vec as much as possible, but only if we will be removing a lot of them
-        if let Some(new_size) = shrinkable_to {
-            if (new_size as f64) < SHRINK_THRESHOLD * (self.instances.len() as f64) {
-                if DEBUG_GC { eprintln!("shrinking from {} to {}", self.instances.len(), new_size) }
-                self.instances.truncate(new_size);
+        shrinkable_to
+    }
 
-                // Make sure that we remove those indices from free_slots
-                let mut new_slots:BinaryHeap<Reverse<usize>> = BinaryHeap::new();
-                for x in self.free_slots.drain() {
-                    match x {
-                        Reverse(i) => {
-                            if i < new_size {
-                                new_slots.push(x)
-                            }
+    /// Shrink the instances vec as much as possible, but only if we will be removing above a given threshold # of placeholders
+    fn shrink(&mut self, new_size: usize) {
+        if (new_size as f64) < SHRINK_THRESHOLD * (self.instances.len() as f64) {
+            if DEBUG_GC { eprintln!("shrinking from {} to {}", self.instances.len(), new_size) }
+            self.instances.truncate(new_size);
+
+            // Make sure that we remove those indices from free_slots
+            let mut new_slots:BinaryHeap<Reverse<usize>> = BinaryHeap::new();
+            for x in self.free_slots.drain() {
+                match x {
+                    Reverse(i) => {
+                        if i < new_size {
+                            new_slots.push(x)
                         }
                     }
                 }
-                self.free_slots = new_slots;
-            } else {
-                if DEBUG_GC { eprintln!("not shrinking from {} to {}", self.instances.len(), new_size) }
             }
+            self.free_slots = new_slots;
+        } else {
+            if DEBUG_GC { eprintln!("not shrinking from {} to {}", self.instances.len(), new_size) }
         }
     }
 
@@ -227,8 +229,12 @@ impl GC {
 
         self.mark_roots(stack, globals);
         self.mark_grey();
-        self.sweep();
+        let shrinkable_to = self.sweep();
 
+        if let Some(new_size) = shrinkable_to {
+            self.shrink(new_size);
+        }
+        
         if DEBUG_GC {
             // # of collections this round is inaccurate if we have DEBUG_GC_STRESS turned on, since we don't use the threshold
             eprintln!("After collection | vec_size = {} | allocations = {} | collected = {}", self.instances.len(), self.allocations, self.next_gc_threshold - self.allocations);

@@ -23,15 +23,12 @@ pub enum ExecutionMode {
     Trace
 }
 
+/// This ended up not being very useful since we usually don't care what kind of deref error we get, they usually mean the same thing, that we tried to use a value in a way it wasn't supposed to be used
 #[derive(Debug, Clone, Copy)]
 pub enum DerefError {
     NotPointer,
     WrongType,
 }
-
-// Is it good rust to split these into two very coupled but seperate structs or is there a way to keep them together while not angering the borrow checker?
-// Mutable VM state: stack, frames, ip within the frames, globals <-- this struct should be built in run and mutated in there
-// Immutable VM values: mode, function chunks (code + constants) <-- this struct should be passed from the compiler as an immutable reference
 
 #[derive(Debug, Clone)]
 struct CallFrame {
@@ -41,6 +38,10 @@ struct CallFrame {
     frame_start: usize,
 }
 
+// Is it good rust to split these into two very coupled but seperate structs or is there a way to keep them together while not angering the borrow checker?
+// 
+// I think this setup worked quite well, but I'm sure there's a better way to do it
+/// Manages all the state involved with the VM's execution, namely the stack, global variables, the heap, and the call frames
 pub struct VMState {
     stack: Vec<Value>,
     frames: Vec<CallFrame>,
@@ -63,7 +64,7 @@ impl VMState {
     }
 
     // Note to future self: peek_mut SHOULD NEVER BE IMPLEMENTED! 
-    // Values on the stack are always implicit copy/cloned, any persistent values must be ObjInstances on the instances vec with LoxPointers instead
+    // Values on the stack are always implicit copy/cloned, any persistent values must be allocated with the Gc and represented with LoxPointers instead
 
     fn peek(&self) -> &Value {
         self.peek_at(0)
@@ -169,24 +170,25 @@ impl VMState {
         self.frame_mut().ip -= neg_offset;
     }
 
-    /// Fixme: mother of god there has to be a better way to do this than just having unwraps everywhere...
     fn capture_upvalue(&self, upvalue: &UpValue) -> Value {
         if upvalue.is_local {
             // Just copy the value from the current stack frame (which is the parents)
-            self.stack.get(self.frame().frame_start + upvalue.index).unwrap().clone()
+            self.stack[self.frame().frame_start + upvalue.index].clone()
         } else {
             // Look at the current frame's closure's upvalue vec and copy it from there
             let parent_closure = self.current_closure();
-            parent_closure.values.get(upvalue.index).unwrap().clone()
+            parent_closure.values[upvalue.index].clone()
         }
     }
 
+    /// Push an upvalue onto the stack
     fn push_upvalue(&mut self, index: usize) {
         let closure = self.current_closure();
         let val = closure.values.get(index).unwrap().clone();
         self.push(val);
     }
 
+    /// Set an upvalue with the top value of the stack
     fn set_upvalue(&mut self, index: usize) {
         let val = self.peek().clone();
         let closure = self.current_closure_mut();
@@ -210,12 +212,6 @@ impl VMState {
                 },
                 Err(_) => Some(String::from("Can only call functions and classses")),
             }
-        } else if let Value::LoxFunction(_fn_index) = callee {
-            panic!("VM panic! Tried to call a LoxFunction that was not wrapped in a LoxClosure? How did this happen?");
-        } else if let Value::NativeFunction(native_fn) = callee {
-            let native_fn = native_fn.clone();
-            self.call_native(&native_fn, arg_count);
-            None
         } else if let Value::LoxBoundMethod(method) = callee {
             let fn_index = method.method;
             let index = self.stack.len() - arg_count - 1; // Index to put the LoxPointer to represent the "this" variable
@@ -239,6 +235,10 @@ impl VMState {
                 return Some(format!("Expected 0 arguments but got {} instead", arg_count));
             }
 
+            None
+        } else if let Value::NativeFunction(native_fn) = callee {
+            let native_fn = native_fn.clone();
+            self.call_native(&native_fn, arg_count);
             None
         } else {
             Some(String::from("Can only call functions and classses"))
@@ -278,14 +278,12 @@ impl VMState {
     }
 
     fn define_native(&mut self, name: String, native_fn: NativeFn) {
-        self.push(Value::LoxString(name.clone()));           // For garbage collection later?
-        self.push(Value::NativeFunction(native_fn)); // ^
         self.globals.insert(name, Value::NativeFunction(native_fn));
-        self.pop();
-        self.pop();
     }
 
-    /// Just adds clutter for now, re-add when there is a native lib to actually use
+    /// Defines all native functions
+    /// 
+    /// Fixme: Make this a config or something?
     fn define_std_lib(&mut self) {
         self.define_native(String::from("test_native"), test_native);
     }
@@ -294,7 +292,7 @@ impl VMState {
     /// 
     /// - A CallFrame for function #0
     /// - Defined global variables for the native functions
-    /// - A Value::LoxFunction for function #0 pushed onto the stack
+    /// - A Value::LoxFunction for function #0 pushed onto the stack => Satisfies the resolver assumption that the first locals slot is filled with something
     fn new() -> VMState {
         let first_fn = CallFrame {
             name: String::from("main"),
@@ -322,9 +320,11 @@ impl VMState {
     }
 }
 
+/// Contains all the information outputted by the compiler
+/// ie: All function and class definitions
 pub struct VM {
     mode: ExecutionMode,
-    pub functions: Vec<FunctionChunk>, // Stores all function definitions
+    pub functions: Vec<FunctionChunk>,
     pub classes: Vec<ClassChunk>,
 }
 

@@ -9,7 +9,7 @@ pub enum Value {
     Bool(bool),
     Nil,
     LoxString(String), 
-    LoxFunction(usize), // Index of the function in the functions Vec in VM
+    LoxFunction(usize), // Index of the function in the functions Vec in VM // Fixme: Is this even reachable? Can this be completely removed and the parameter put in OpClosure?
     NativeFunction(NativeFn),
     LoxClass(usize),
     LoxPointer(ObjPointer),
@@ -27,7 +27,7 @@ impl Value {
             Value::LoxFunction(x)           => format!("<fn {}>", vm.functions.get(*x).unwrap().name.as_ref().unwrap()),
             Value::NativeFunction(x)        => format!("<native_fn {:?}>", x),
             Value::LoxClass(class)          => format!("<class {}>", class),
-            Value::LoxPointer(pointer)      => format!("<pointer {}> to {}", pointer.obj, state.deref(*pointer).to_string(vm)),
+            Value::LoxPointer(pointer)      => format!("<pointer {}> to {}", pointer.obj, state.deref(*pointer).to_string(vm)), // Suggestion: Don't reveal to the user the internals?
             Value::LoxBoundMethod(method)   => format!("<method {} from {}", vm.functions.get(method.method).unwrap().name.as_ref().unwrap(), state.deref(method.pointer).to_string(vm))
         }
     }
@@ -51,11 +51,7 @@ impl Value {
 }
 
 pub fn is_falsey(val: &Value) -> bool {
-    match val {
-        Value::Bool(false) => true,
-        Value::Nil => true,
-        _ => false
-    }
+    matches!(val, Value::Bool(false) | Value::Nil)
 }
 
 pub fn values_equal(t: (Value, Value)) -> bool {
@@ -67,6 +63,8 @@ pub fn values_equal(t: (Value, Value)) -> bool {
         return true;
     } else if let (Value::LoxString(x), Value::LoxString(y)) = t {
         return x.eq(&y);
+    } else if let (Value::LoxPointer(p1), Value::LoxPointer(p2)) = t {
+        return p1 == p2;
     }
 
     return false;
@@ -83,6 +81,10 @@ pub struct ObjBoundMethod {
     pub method: usize, // Index into the functions vec for which function to call
     pub pointer: ObjPointer, // Pointer to the LoxInstance that this method is bound to
 }
+
+// End of stack/implicit copy objects
+
+// Heap Objects
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum HeapObjType {
@@ -142,7 +144,7 @@ impl HeapObjVal {
         match self {
             HeapObjVal::LoxClosure(closure)   => format!("<fn {} | {:?}>", vm.functions.get(closure.function).unwrap().name.as_ref().unwrap(), closure),
             HeapObjVal::LoxInstance(instance) => format!("<instance {}>", instance.class),
-            HeapObjVal::HeapPlaceholder => panic!("VM panic! How did a placeholder value get here?"),
+            HeapObjVal::HeapPlaceholder       => panic!("VM panic! How did a placeholder value get here?"),
         }
     }
 
@@ -184,7 +186,7 @@ impl HeapObjVal {
 pub struct ObjInstance {
     pub class: usize, // Which class was this instance made from?
     pub fields: HashMap<String,Value>, // Stores the field values. FunctionChunks are stored in the ClassChunk, which is not ideal since it adds an extra vec lookup before getting to the function
-    // Possible improvement: Resolve all the field references at compile time and replace this with just a Vec
+    // Todo: Possible improvement: Resolve all the field references at compile time and replace this with just a Vec?
 }
 
 impl ObjInstance {
@@ -198,8 +200,6 @@ impl ObjInstance {
 pub struct ObjClosure {
     pub function: usize, 
     pub values: Vec<Value>, // Will be filled at runtime
-
-    // pub values: Vec<usize>, // Will be filled at runtime with indexes of the captured upvalues in the VM upvalues Vec
 }
 
 impl ObjClosure {

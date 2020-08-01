@@ -1,5 +1,3 @@
-const ERROR_MESSAGES: &'static [&'static str] = &["rlox: Invalid character"]; // Error messages will just be constant static strings
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TokenType {
     TokenLeftParen, TokenRightParen,
@@ -43,11 +41,11 @@ impl Scanner<'_> {
         }
     }
 
-    fn error_token(&self, message_index: usize) -> Token {
+    fn error_token(&self, msg: String) -> Token {
         Token {
             token_type: TokenType::TokenError,
             line_num: self.cur_line,
-            lexemme: ERROR_MESSAGES[message_index].to_string()
+            lexemme: msg,
         }
     }
 
@@ -84,6 +82,7 @@ impl Scanner<'_> {
         }
     }
 
+    /// This function is gross and it also messes up sometimes near the end of files
     fn skip_whitespace(&mut self) {
         loop {
             if self.is_at_end() { return; }
@@ -114,7 +113,7 @@ impl Scanner<'_> {
             self.advance();
         }
 
-        if self.is_at_end() { return self.error_token(1); }
+        if self.is_at_end() { return self.error_token(String::from("Missing delimiter for string")); }
 
         self.advance(); // Step over the closing quote
         return self.create_token(TokenType::TokenString);
@@ -237,7 +236,7 @@ impl Scanner<'_> {
                 self.create_token(token_type)
             },
             b'"' => self.create_string(),
-            _ => self.error_token(0)
+            _ => self.error_token(String::from("Invalid character"))
         };
     }
 }

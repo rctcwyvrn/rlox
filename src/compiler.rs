@@ -46,7 +46,7 @@ impl Compiler<'_> {
     }
 
     fn advance(&mut self){
-        self.tokens.push(self.scanner.scan_token()); // Wastes memory by not just dropping the older tokens, make advance() drop older tokens after i finish the code?
+        self.tokens.push(self.scanner.scan_token()); // Fixme: Wastes memory by not just dropping the older tokens, make advance() drop older tokens after i finish the code?
         if self.current().token_type == TokenType::TokenError {
             self.error("Error in scanning");
             self.advance();

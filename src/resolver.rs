@@ -12,7 +12,7 @@ pub struct Resolver {
     stack: Vec<ResolverNode>
 }
 
-/// Used by Resolver to generate simple functions that just call the same function on the ResolverNode on the top of the stack
+/// Used by Resolver to generate simple functions that just call the same function on the current ResolverNode
 macro_rules! delegate_to_latest {
     ($fn_name: ident, $ret: ty) => {
         /// Calls this function on the currrent ResolverNode
@@ -211,7 +211,9 @@ impl ResolverNode {
     /// 
     /// *  Err(_) => Syntax error detected, throw an error
     /// *  Ok(None) => Resolution failed
-    /// *  Ok(index) => found
+    /// *  Ok(Some(index)) => found
+    /// 
+    /// Fixme: Should probably make this a Option<Option<usize>>
     pub fn resolve_local(&self, name: &str) -> Result<Option<usize>, ()> {
         let mut error = false;
         for (i, local) in self.locals.iter().enumerate() {

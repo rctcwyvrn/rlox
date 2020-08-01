@@ -61,7 +61,7 @@ pub struct Instr {
 #[derive(Debug)]
 pub struct Chunk {
     pub code: Vec<Instr>,
-    pub constants: Vec<Value>
+    pub constants: Vec<Value>, // Fixme: Make one big constants vec instead of having one in each chunk. It exclusively stores the lox primitive types anyway
 }
 
 impl Chunk {
@@ -105,7 +105,7 @@ pub struct FunctionChunk {
     pub name: Option<String>, // None for the top level script
     pub arity: usize,
     pub fn_type: FunctionType,
-    pub upvalues: Option<Vec<UpValue>>, // None while the function is being defined/for the top level script, must be set to Some after the definition is complete
+    pub upvalues: Option<Vec<UpValue>>, // None while the function is being defined/for the top level script, must be set to Some and filled with upvalues from the Resolver after the definition is complete
 }
 
 impl FunctionChunk {

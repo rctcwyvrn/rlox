@@ -316,7 +316,7 @@ impl VMState {
     ///
     /// Fixme: Make this a config or something?
     fn define_std_lib(&mut self) {
-        self.define_native(String::from("test_native"), test_native);
+        self.define_native(String::from("clock"), clock);
     }
 
     /// Initializes the VMState with:

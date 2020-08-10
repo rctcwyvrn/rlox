@@ -48,7 +48,7 @@ impl Compiler<'_> {
     fn advance(&mut self) {
         self.tokens.push(self.scanner.scan_token()); // Fixme: Wastes memory by not just dropping the older tokens, make advance() drop older tokens after i finish the code?
         if self.current().token_type == TokenType::TokenError {
-            self.error("Error in scanning");
+            self.error(self.current().lexemme.clone().as_str());
             self.advance();
         }
         //println!("depth = {} | prev {:?} | cur {:?}", self.current_function, self.previous(), self.current());
@@ -88,7 +88,7 @@ impl Compiler<'_> {
             return;
         } // Ignore other errors while in panic_mode
         let token = self.previous();
-        eprintln!("[Line {}] Error", token.line_num);
+        eprint!("[Line {}] Error", token.line_num);
         match token.token_type {
             TokenType::TokenEOF => eprintln!(" at end of file"),
             TokenType::TokenError => (), // nothing
@@ -168,7 +168,7 @@ impl Compiler<'_> {
     fn patch_jump(&mut self, offset: usize) {
         let jump_amount = self.current_chunk().code.len() - offset - 1;
         if jump_amount > usize::max_value() {
-            self.error("Too much code to jump over.");
+            self.error("Too much code to jump over");
         }
 
         let jump_instr = self.current_chunk().code.get_mut(offset).unwrap();

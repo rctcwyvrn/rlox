@@ -1,0 +1,1 @@
+dart tool/bin/test.dart #> results.txt

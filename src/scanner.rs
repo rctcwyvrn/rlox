@@ -120,11 +120,7 @@ impl Scanner<'_> {
 
     /// This function is gross and it also messes up sometimes near the end of files
     fn skip_whitespace(&mut self) {
-        loop {
-            if self.is_at_end() {
-                return;
-            }
-
+        while !self.is_at_end() {
             let next = self.peek();
             if (next == b' ') || (next == b'\t') || (next == b'\r') {
                 self.advance();
@@ -141,6 +137,8 @@ impl Scanner<'_> {
                         self.advance(); // consume the \n
                         self.cur_line += 1;
                     }
+                } else {
+                    return; // Return on single slash
                 }
             } else {
                 return;

@@ -395,6 +395,7 @@ void _defineTestSuites() {
 
   rust({
     "test": "pass",
+    // "test/number/nan_equality.lox": "skip",
     ...earlyChapters,
   });
 }

@@ -696,9 +696,9 @@ impl VM {
                         return InterpretResult::InterpretRuntimeError;
                     }
                 }
+                OpCode::OpDivide => op_binary!(Value::Double, /),
                 OpCode::OpSubtract => op_binary!(Value::Double, -),
                 OpCode::OpMultiply => op_binary!(Value::Double, *),
-                OpCode::OpDivide => op_binary!(Value::Double, /),
                 OpCode::OpGreater => op_binary!(Value::Bool, >),
                 OpCode::OpLess => op_binary!(Value::Bool, <),
                 OpCode::OpEqual => {

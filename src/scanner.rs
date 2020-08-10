@@ -133,11 +133,14 @@ impl Scanner<'_> {
                 self.cur_line += 1;
             } else if next == b'/' {
                 if self.peek_next() == b'/' {
-                    while self.peek() != b'\n' && !self.is_at_end() {
+                    while !self.is_at_end() && self.peek() != b'\n'{
                         self.advance();
                     }
-                    self.advance(); // consume the \n
-                    self.cur_line += 1;
+                    
+                    if !self.is_at_end() {
+                        self.advance(); // consume the \n
+                        self.cur_line += 1;
+                    }
                 }
             } else {
                 return;

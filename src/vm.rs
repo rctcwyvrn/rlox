@@ -250,15 +250,15 @@ impl VMState {
                     *class_def.methods.get(init).unwrap(),
                     arg_count,
                     function_defs,
-                );
+                )
             } else if arg_count != 0 {
-                return Some(format!(
+                Some(format!(
                     "Expected 0 arguments but got {} instead",
                     arg_count
-                ));
+                ))
+            } else {
+                None
             }
-
-            None
         } else if let Value::NativeFunction(native_fn) = callee {
             let native_fn = native_fn.clone();
             self.call_native(&native_fn, arg_count);
@@ -282,7 +282,6 @@ impl VMState {
                 target_fn.arity, arg_count
             ));
         }
-
         if self.frames.len() == FRAMES_MAX {
             return Some(String::from("Stack overflow"));
         }

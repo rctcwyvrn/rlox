@@ -1,3 +1,3 @@
 class Foo {}
 
-Foo().unknown(); // expect runtime error: Undefined property 'unknown'.
+Foo().unknown(); // expect runtime error: Undefined property 'unknown' in ObjInstance { class: 0, fields: {} }

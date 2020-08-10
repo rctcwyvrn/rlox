@@ -28,7 +28,7 @@ impl Value {
                 "<fn {}>",
                 vm.functions.get(*x).unwrap().name.as_ref().unwrap()
             ),
-            Value::NativeFunction(x) => format!("<native_fn {:?}>", x),
+            Value::NativeFunction(_x) => format!("<native_fn>"),
             Value::LoxClass(class) => format!("<class {}>", class),
             Value::LoxPointer(pointer) => format!(
                 "<pointer {}> to {}",

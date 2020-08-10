@@ -226,7 +226,7 @@ impl VMState {
                     let fn_index = closure.function;
                     self.call(fn_index, arg_count, function_defs)
                 }
-                Err(_) => Some(String::from("Can only call functions and classses")),
+                Err(_) => Some(String::from("Can only call functions and classes")),
             }
         } else if let Value::LoxBoundMethod(method) = callee {
             let fn_index = method.method;
@@ -264,7 +264,7 @@ impl VMState {
             self.call_native(&native_fn, arg_count);
             None
         } else {
-            Some(String::from("Can only call functions and classses"))
+            Some(String::from("Can only call functions and classes"))
         }
     }
 

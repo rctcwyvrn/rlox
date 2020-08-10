@@ -63,9 +63,8 @@ impl Compiler<'_> {
     }
 
     fn consume(&mut self, token_type: TokenType, msg: &str) {
-        if self.current().token_type == token_type {
-            self.advance();
-        } else {
+        self.advance();
+        if !(self.previous().token_type == token_type) {
             self.error(msg);
         }
     }
@@ -90,7 +89,7 @@ impl Compiler<'_> {
         let token = self.previous();
         eprint!("[Line {}] Error", token.line_num);
         match token.token_type {
-            TokenType::TokenEOF => eprintln!(" at end of file"),
+            TokenType::TokenEOF => eprint!(" at end of file"),
             TokenType::TokenError => (), // nothing
             _ => eprint!(" at '{}'", token.lexemme),
         }
@@ -318,7 +317,7 @@ impl Compiler<'_> {
             }
 
             if superclass_index == self.current_class {
-                self.error("A class cannot inherit itself");
+                self.error("A class cannot inherit from itself");
             }
 
             match superclass_index {
@@ -331,7 +330,7 @@ impl Compiler<'_> {
                     self.current_class().superclass = superclass_index;
                 }
                 None => {
-                    self.error(format!("Unable to resolve superclass {}", superclass_name).as_str())
+                    self.error(format!("'{}' is not a valid superclass", superclass_name).as_str())
                 }
             }
         }

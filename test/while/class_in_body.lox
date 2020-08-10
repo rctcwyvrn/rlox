@@ -1,2 +1,2 @@
-// [line 2] Error at 'class': Expect expression.
+// [line 2] Error at 'class': Expected expression
 while (true) class Foo {}

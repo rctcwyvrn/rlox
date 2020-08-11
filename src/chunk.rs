@@ -1,5 +1,4 @@
 use crate::resolver::UpValue;
-use crate::value::Value;
 
 use std::collections::HashMap;
 
@@ -60,7 +59,6 @@ pub struct Instr {
 #[derive(Debug)]
 pub struct Chunk {
     pub code: Vec<Instr>,
-    pub constants: Vec<Value>, // Fixme: Make one big constants vec instead of having one in each chunk. It exclusively stores the lox primitive types anyway
 }
 
 impl Chunk {
@@ -68,23 +66,9 @@ impl Chunk {
         self.code.push(instruction);
     }
 
-    pub fn add_constant(&mut self, value: Value) -> usize {
-        self.constants.push(value);
-        self.constants.len() - 1
-    }
-
-    pub fn get_constant(&self, index: usize) -> Value {
-        let val = self.constants.get(index);
-        match val {
-            Some(x) => x.clone(),
-            None => panic!("VM panic: Constant with given index not found"), // add runtime failure in here later
-        }
-    }
-
     pub fn new() -> Chunk {
         Chunk {
             code: Vec::new(),
-            constants: Vec::new(),
         }
     }
 }

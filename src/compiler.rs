@@ -10,6 +10,8 @@ pub struct Compiler<'a> {
     scanner: Scanner<'a>,
     tokens: Vec<Token>,
 
+    constants: Vec<Value>,
+
     classes: Vec<ClassChunk>,
     current_class: Option<usize>,
 
@@ -138,9 +140,19 @@ impl Compiler<'_> {
     }
 
     fn emit_constant(&mut self, value: Value) -> usize {
-        let index = self.current_chunk().add_constant(value);
+        let index = self.add_constant(value);
         self.emit_instr(OpCode::OpConstant(index));
         index
+    }
+
+    fn add_constant(&mut self, value: Value) -> usize {
+        match self.constants.iter().position(|x| x == &value) {
+            Some(i) => i,
+            None => {
+                self.constants.push(value);
+                self.constants.len() - 1
+            },
+        }
     }
 
     fn emit_return(&mut self) {
@@ -381,8 +393,7 @@ impl Compiler<'_> {
     ///
     /// Only used for global variables
     fn identifier_constant(&mut self, str_val: &String) -> usize {
-        self.current_chunk()
-            .add_constant(Value::LoxString(str_val.to_string()))
+        self.add_constant(Value::LoxString(str_val.to_string()))
     }
 
     /// Emits the instruction to define the global variable
@@ -879,6 +890,7 @@ impl Compiler<'_> {
         Compiler {
             scanner,
             tokens,
+            constants: Vec::new(),
             classes: Vec::new(),
             current_class: None,
             functions,
@@ -902,12 +914,12 @@ impl Compiler<'_> {
                 if fn_chunk.fn_type != FunctionType::Method
                     && fn_chunk.fn_type != FunctionType::Initializer
                 {
-                    disassemble_fn_chunk(&fn_chunk);
+                    disassemble_fn_chunk(&fn_chunk, &self.constants);
                 }
             }
 
             for class_chunk in self.classes.iter() {
-                disassemble_class_chunk(&class_chunk, &self.functions, &self.classes);
+                disassemble_class_chunk(&class_chunk, &self.functions, &self.classes, &self.constants);
             }
         }
 
@@ -915,6 +927,7 @@ impl Compiler<'_> {
             Some(CompilationResult {
                 classes: self.classes,
                 functions: self.functions,
+                constants: self.constants,
             })
         } else {
             None
@@ -925,4 +938,5 @@ impl Compiler<'_> {
 pub struct CompilationResult {
     pub classes: Vec<ClassChunk>,
     pub functions: Vec<FunctionChunk>,
+    pub constants: Vec<Value>,
 }

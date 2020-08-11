@@ -27,7 +27,7 @@ fn main() {
         repl();
     } else if args.len() == 2 {
         let result = run_file(args.get(1).unwrap());
-        std::process::exit( match result {
+        std::process::exit(match result {
             InterpretResult::InterpretOK => 0,
             InterpretResult::InterpretCompileError => 65,
             InterpretResult::InterpretRuntimeError => 70,

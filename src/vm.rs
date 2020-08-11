@@ -356,6 +356,7 @@ pub struct VM {
     mode: ExecutionMode,
     pub functions: Vec<FunctionChunk>,
     pub classes: Vec<ClassChunk>,
+    pub constants: Vec<Value>,
 }
 
 impl VM {
@@ -364,13 +365,7 @@ impl VM {
             mode,
             functions: result.functions,
             classes: result.classes,
-        }
-    }
-
-    fn get_chunk(&self, state: &VMState) -> &FunctionChunk {
-        match self.functions.get(state.frame().function) {
-            Some(x) => x,
-            None => panic!("VM panic! Invalid CallFrame function index"),
+            constants: result.constants,
         }
     }
 
@@ -389,8 +384,8 @@ impl VM {
         }
     }
 
-    fn get_variable_name(&self, index: usize, state: &VMState) -> String {
-        let name_val = self.get_chunk(state).chunk.get_constant(index); // FIXME: should each FunctionChunk have a constants field or should it be shared? Does this work for globals? (I think it does because each identifier makes a new LoxString on the relevant chunk's constants vec)
+    fn get_variable_name(&self, index: usize) -> String {
+        let name_val = self.constants[index].clone(); 
         if let Value::LoxString(var_name) = name_val {
             return var_name;
         } else {
@@ -460,12 +455,12 @@ impl VM {
                     state.pop();
                 }
                 OpCode::OpDefineGlobal(index) => {
-                    let var_name = self.get_variable_name(index, &state);
+                    let var_name = self.get_variable_name(index);
                     let var_val = state.pop();
                     state.globals.insert(var_name, var_val);
                 }
                 OpCode::OpGetGlobal(index) => {
-                    let var_name = self.get_variable_name(index, &state);
+                    let var_name = self.get_variable_name(index);
                     let var_val = state.globals.get(&var_name);
                     match var_val {
                         Some(x) => {
@@ -482,7 +477,7 @@ impl VM {
                     }
                 }
                 OpCode::OpSetGlobal(index) => {
-                    let var_name = self.get_variable_name(index, &state);
+                    let var_name = self.get_variable_name(index);
 
                     // We don't want assignment to pop the value since this is an expression
                     // this will almost always be in a expression statement, which will pop the value
@@ -505,7 +500,7 @@ impl VM {
                     state.stack[dest] = state.peek().clone(); // Same idea as OpSetGlobal, don't pop value since it's an expression
                 }
                 OpCode::OpInvoke(index, arg_count) => {
-                    let name = self.get_variable_name(index, &state);
+                    let name = self.get_variable_name(index);
                     let pointer_val = state.peek_at(arg_count);
 
                     let result = match state.deref_into(pointer_val, HeapObjType::LoxInstance) {
@@ -517,8 +512,8 @@ impl VM {
                                 let value = instance.fields.get(&name).unwrap().clone();
                                 let index = state.stack.len() - 1 - arg_count;
                                 state.stack[index] = value; // Remove the instance and replace with the value
-                                // Perform the call 
-                                state.call_value(arg_count, &self.functions, &self.classes)
+                                state.call_value(arg_count, &self.functions, &self.classes) // Perform the call
+
                             } else if class_def.methods.contains_key(&name) {
                                 // We know that the top of the stack is LoxPointer | arg1 | arg2
                                 // So we can go ahead and call
@@ -537,7 +532,7 @@ impl VM {
                     }
                 }
                 OpCode::OpGetProperty(index) => {
-                    let name = self.get_variable_name(index, &state);
+                    let name = self.get_variable_name(index);
                     let pointer_val = state.peek();
 
                     // Todo: Combine this and SetProperty into a macro so it doesn't hurt me everytime i have to read this
@@ -578,7 +573,7 @@ impl VM {
                 }
                 OpCode::OpSetProperty(index) => {
                     // Fixme: this is nearly identical to OpGetProperty, is there any way to combine them nicely?
-                    let name = self.get_variable_name(index, &state);
+                    let name = self.get_variable_name(index);
                     let val = state.pop();
                     let pointer_val = state.peek().clone();
 
@@ -600,7 +595,7 @@ impl VM {
                 }
                 // This is almost identical to OpGetProperty, but it goes one extra jump to get the method from the superclass, and binds it to itself
                 OpCode::OpGetSuper(index) => {
-                    let name = self.get_variable_name(index, &state); // Fixme: why the fuck do i have to pass the entire state here? Don't we just need the current frame
+                    let name = self.get_variable_name(index); // Fixme: why the fuck do i have to pass the entire state here? Don't we just need the current frame
                     let pointer_val = state.peek();
 
                     // Todo: Combine this and SetProperty into a macro so it doesn't hurt me everytime i have to read this
@@ -680,7 +675,7 @@ impl VM {
                 OpCode::OpClass(index) => state.push(Value::LoxClass(index)),
 
                 OpCode::OpConstant(index) => {
-                    state.push(self.get_chunk(&state).chunk.get_constant(index))
+                    state.push(self.constants[index].clone())
                 } // FIXME
                 OpCode::OpTrue => state.push(Value::Bool(true)),
                 OpCode::OpFalse => state.push(Value::Bool(false)),
@@ -753,7 +748,7 @@ fn debug_instances(state: &VMState) {
 fn debug_trace(vm: &VM, instr: &Instr, state: &VMState) {
     eprintln!("---");
     eprint!("> Next instr (#{}): ", state.frame().ip - 1);
-    disassemble_instruction(instr, &vm.get_chunk(state).chunk, state.frame().ip - 1);
+    disassemble_instruction(instr, state.frame().ip - 1, &vm.constants);
     debug_state_trace(state);
     eprintln!("---\n");
 }
@@ -761,16 +756,8 @@ fn debug_trace(vm: &VM, instr: &Instr, state: &VMState) {
 fn debug_print_constants(vm: &VM) {
     eprintln!("---");
     eprintln!("> Constants");
-    for fn_chunk in vm.functions.iter() {
-        let name = if let Some(fn_name) = &fn_chunk.name {
-            fn_name.clone()
-        } else {
-            String::from("script")
-        };
-        eprintln!(">>> {}", name);
-        for val in fn_chunk.chunk.constants.iter() {
-            eprintln!(">> [ {:?} ]", val);
-        }
+    for val in vm.constants.iter() {
+        eprintln!(">> [ {:?} ]", val);
     }
     eprintln!("---\n");
 }

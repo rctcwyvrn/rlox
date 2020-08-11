@@ -434,7 +434,7 @@ impl Compiler<'_> {
             self.emit_return();
         } else {
             if self.current_fn_type() == FunctionType::Initializer {
-                self.error("Cannot return a value from initializer");
+                self.error("Cannot return a value from an initializer");
             }
 
             self.expression();

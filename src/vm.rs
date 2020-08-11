@@ -515,9 +515,10 @@ impl VM {
                             if instance.fields.contains_key(&name) {
                                 // Guard against the weird edge case where instance.thing() is actually calling a closure instance.thing, not a method invocation
                                 let value = instance.fields.get(&name).unwrap().clone();
-                                state.pop(); // Remove the instance
-                                state.push(value); // Replace with the value
-                                None
+                                let index = state.stack.len() - 1 - arg_count;
+                                state.stack[index] = value; // Remove the instance and replace with the value
+                                // Perform the call 
+                                state.call_value(arg_count, &self.functions, &self.classes)
                             } else if class_def.methods.contains_key(&name) {
                                 // We know that the top of the stack is LoxPointer | arg1 | arg2
                                 // So we can go ahead and call

@@ -20,7 +20,7 @@ pub fn disassemble_class_chunk(
     }
 }
 
-pub fn disassemble_fn_chunk(fn_chunk: &FunctionChunk, constants:&Vec<Value>) {
+pub fn disassemble_fn_chunk(fn_chunk: &FunctionChunk, constants: &Vec<Value>) {
     match &fn_chunk.name {
         Some(name) => eprintln!("== <fn {}> ==============", name),
         None => eprintln!("== <script> =============="),

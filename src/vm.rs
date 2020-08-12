@@ -385,7 +385,7 @@ impl VM {
     }
 
     fn get_variable_name(&self, index: usize) -> String {
-        let name_val = self.constants[index].clone(); 
+        let name_val = self.constants[index].clone();
         if let Value::LoxString(var_name) = name_val {
             return var_name;
         } else {
@@ -512,8 +512,8 @@ impl VM {
                                 let value = instance.fields.get(&name).unwrap().clone();
                                 let index = state.stack.len() - 1 - arg_count;
                                 state.stack[index] = value; // Remove the instance and replace with the value
-                                state.call_value(arg_count, &self.functions, &self.classes) // Perform the call
-
+                                state.call_value(arg_count, &self.functions, &self.classes)
+                            // Perform the call
                             } else if class_def.methods.contains_key(&name) {
                                 // We know that the top of the stack is LoxPointer | arg1 | arg2
                                 // So we can go ahead and call
@@ -674,9 +674,7 @@ impl VM {
 
                 OpCode::OpClass(index) => state.push(Value::LoxClass(index)),
 
-                OpCode::OpConstant(index) => {
-                    state.push(self.constants[index].clone())
-                } // FIXME
+                OpCode::OpConstant(index) => state.push(self.constants[index].clone()), // FIXME
                 OpCode::OpTrue => state.push(Value::Bool(true)),
                 OpCode::OpFalse => state.push(Value::Bool(false)),
                 OpCode::OpNil => state.push(Value::Nil),

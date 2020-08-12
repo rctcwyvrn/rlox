@@ -151,7 +151,7 @@ impl Compiler<'_> {
             None => {
                 self.constants.push(value);
                 self.constants.len() - 1
-            },
+            }
         }
     }
 
@@ -919,7 +919,12 @@ impl Compiler<'_> {
             }
 
             for class_chunk in self.classes.iter() {
-                disassemble_class_chunk(&class_chunk, &self.functions, &self.classes, &self.constants);
+                disassemble_class_chunk(
+                    &class_chunk,
+                    &self.functions,
+                    &self.classes,
+                    &self.constants,
+                );
             }
         }
 

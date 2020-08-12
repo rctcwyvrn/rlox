@@ -1,8 +1,6 @@
 use crate::chunk::{Chunk, ClassChunk, FunctionChunk, Instr, OpCode};
 use crate::value::Value;
 
-pub const DEBUG: bool = true;
-
 pub fn disassemble_class_chunk(
     class_chunk: &ClassChunk,
     function_defs: &Vec<FunctionChunk>,

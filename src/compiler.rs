@@ -1,5 +1,5 @@
 use crate::chunk::{Chunk, ClassChunk, FunctionChunk, FunctionType, Instr, OpCode};
-use crate::debug::{disassemble_class_chunk, disassemble_fn_chunk, DEBUG};
+use crate::debug::{disassemble_class_chunk, disassemble_fn_chunk};
 use crate::prec::{get_rule, ParseFn, Precedence};
 use crate::resolver::Resolver;
 use crate::scanner::{Scanner, Token, TokenType};
@@ -903,13 +903,13 @@ impl Compiler<'_> {
     }
 
     // Note: is this an expensive move (moving self into this function) ? Is it less expensive to just move/copy the FunctionChunks afterwards?
-    pub fn compile(mut self) -> Option<CompilationResult> {
+    pub fn compile(mut self, debug: bool) -> Option<CompilationResult> {
         while !self.match_cur(TokenType::TokenEOF) {
             self.declaration();
         }
         self.end_compilation();
 
-        if DEBUG {
+        if debug {
             for fn_chunk in self.functions.iter() {
                 if fn_chunk.fn_type != FunctionType::Method
                     && fn_chunk.fn_type != FunctionType::Initializer

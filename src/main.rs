@@ -32,7 +32,7 @@ fn run_file(filename: &String, debug: bool) -> InterpretResult {
 
     let mut s = String::new();
     match file.read_to_string(&mut s) {
-        Ok(_) => return rlox::interpret(&s, debug),
+        Ok(_) => return rlox::interpret(&s, debug, false),
         Err(why) => panic!("Failed to read {}: {}", path_display, why),
     };
 }

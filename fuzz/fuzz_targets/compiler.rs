@@ -5,5 +5,5 @@ extern crate rlox;
 
 fuzz_target!(|data: String| {
     // fuzzed code goes here
-    rlox::interpret(&data, false);
+    rlox::interpret(&data, false, true);
 });

@@ -23,6 +23,7 @@ pub struct Compiler<'a> {
 
     had_error: bool,
     panic_mode: bool,
+    quiet_mode: bool,
 }
 
 impl Compiler<'_> {
@@ -88,6 +89,14 @@ impl Compiler<'_> {
         if self.panic_mode {
             return;
         } // Ignore other errors while in panic_mode
+
+        self.had_error = true;
+        self.panic_mode = true;
+
+        if self.quiet_mode {
+            return;
+        }
+
         let token = self.previous();
         eprint!("[Line {}] Error", token.line_num);
         match token.token_type {
@@ -97,9 +106,6 @@ impl Compiler<'_> {
         }
 
         eprintln!(": {}", message);
-
-        self.had_error = true;
-        self.panic_mode = true;
     }
 
     fn synchronize(&mut self) {
@@ -689,8 +695,14 @@ impl Compiler<'_> {
     }
 
     fn number(&mut self) {
-        let value = self.previous().lexemme.parse::<f64>().unwrap(); // sketch but ok
-        self.emit_constant(Value::Double(value));
+        // We trust that the scanner has given us something that looks like a number (124214.52)
+        // BUT the scanner does NOT check the size, so this parse to f64 can still fail due to overflow
+
+        if let Ok(value) = self.previous().lexemme.parse::<f64>() {
+            self.emit_constant(Value::Double(value));
+        } else {
+            self.error(format!("Invalid number").as_str())
+        }
     }
 
     fn literal(&mut self) {
@@ -878,7 +890,7 @@ impl Compiler<'_> {
         self.current_function = self.parent_functions.pop().unwrap();
     }
 
-    pub fn new<'a>(code: &'a String) -> Compiler<'a> {
+    pub fn new<'a>(code: &'a String, quiet: bool) -> Compiler<'a> {
         let mut scanner = Scanner::new(code);
 
         let mut tokens = Vec::new();
@@ -899,6 +911,7 @@ impl Compiler<'_> {
             resolver: Resolver::new(),
             had_error: false,
             panic_mode: false,
+            quiet_mode: quiet,
         }
     }
 

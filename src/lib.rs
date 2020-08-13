@@ -19,17 +19,18 @@ pub enum InterpretResult {
     InterpretRuntimeError,
 }
 
-pub fn interpret(source: &String, debug: bool) -> InterpretResult {
-    let compiler = Compiler::new(source);
+pub fn interpret(source: &String, debug: bool, quiet: bool) -> InterpretResult {
+    let compiler = Compiler::new(source, quiet);
     let result = compiler.compile(debug);
     if let None = result {
         return InterpretResult::InterpretCompileError;
     }
 
+    let result = result.unwrap();
     let vm = if debug {
-        VM::new(ExecutionMode::Trace, result.unwrap())
+        VM::new(ExecutionMode::Trace, result, quiet)
     } else {
-        VM::new(ExecutionMode::Default, result.unwrap())
+        VM::new(ExecutionMode::Default, result, quiet)
     };
     vm.run()
 }

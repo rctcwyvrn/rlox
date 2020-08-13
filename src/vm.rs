@@ -347,6 +347,7 @@ impl VMState {
 /// Contains all the information outputted by the compiler
 /// ie: All function and class definitions
 pub struct VM {
+    quiet_mode: bool,
     mode: ExecutionMode,
     pub functions: Vec<FunctionChunk>,
     pub classes: Vec<ClassChunk>,
@@ -354,8 +355,9 @@ pub struct VM {
 }
 
 impl VM {
-    pub fn new<'a>(mode: ExecutionMode, result: CompilationResult) -> VM {
+    pub fn new<'a>(mode: ExecutionMode, result: CompilationResult, quiet: bool) -> VM {
         VM {
+            quiet_mode: quiet,
             mode,
             functions: result.functions,
             classes: result.classes,
@@ -364,6 +366,10 @@ impl VM {
     }
 
     fn runtime_error(&self, msg: &str, state: &VMState) {
+        if self.quiet_mode {
+            return;
+        }
+
         eprintln!("{}", msg);
         for call_frame in state.frames.iter().rev() {
             let function = self.functions.get(call_frame.function).unwrap();

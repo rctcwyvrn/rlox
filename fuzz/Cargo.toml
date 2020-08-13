@@ -20,7 +20,7 @@ path = ".."
 members = ["."]
 
 [[bin]]
-name = "fuzz_target_1"
-path = "fuzz_targets/fuzz_target_1.rs"
+name = "compiler"
+path = "fuzz_targets/compiler.rs"
 test = false
 doc = false

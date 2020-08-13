@@ -10,7 +10,6 @@ mod value;
 mod vm;
 
 use crate::compiler::Compiler;
-use crate::resolver::Resolver;
 use crate::vm::{ExecutionMode, VM};
 
 #[derive(Debug, PartialEq)]
@@ -21,8 +20,7 @@ pub enum InterpretResult {
 }
 
 pub fn interpret(source: &String, debug: bool) -> InterpretResult {
-    let mut resolver = Resolver::new();
-    let compiler = Compiler::new(source, &mut resolver);
+    let compiler = Compiler::new(source);
     let result = compiler.compile(debug);
     if let None = result {
         return InterpretResult::InterpretCompileError;

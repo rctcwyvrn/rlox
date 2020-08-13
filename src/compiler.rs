@@ -19,7 +19,7 @@ pub struct Compiler<'a> {
     current_function: usize,      // The current FunctionChunk
     parent_functions: Vec<usize>, // Which FunctionChunk should the the compiler return to after. Acts as a stack
 
-    resolver: &'a mut Resolver, // Manages the slots for the local variables and upvalues, represented as a Vec of individal ResolverNodes
+    resolver: Resolver, // Manages the slots for the local variables and upvalues, represented as a Vec of individal ResolverNodes
 
     had_error: bool,
     panic_mode: bool,
@@ -878,7 +878,7 @@ impl Compiler<'_> {
         self.current_function = self.parent_functions.pop().unwrap();
     }
 
-    pub fn new<'a>(code: &'a String, resolver: &'a mut Resolver) -> Compiler<'a> {
+    pub fn new<'a>(code: &'a String) -> Compiler<'a> {
         let mut scanner = Scanner::new(code);
 
         let mut tokens = Vec::new();
@@ -896,7 +896,7 @@ impl Compiler<'_> {
             functions,
             current_function: 0,
             parent_functions: Vec::new(),
-            resolver,
+            resolver: Resolver::new(),
             had_error: false,
             panic_mode: false,
         }

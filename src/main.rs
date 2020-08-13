@@ -1,17 +1,4 @@
-mod chunk;
-mod compiler;
-mod debug;
-mod gc;
-mod native;
-mod prec;
-mod resolver;
-mod scanner;
-mod value;
-mod vm;
-
-use crate::compiler::Compiler;
-use crate::resolver::Resolver;
-use crate::vm::{ExecutionMode, InterpretResult, VM};
+use rlox::InterpretResult;
 
 use std::env;
 use std::fs::File;
@@ -45,23 +32,7 @@ fn run_file(filename: &String, debug: bool) -> InterpretResult {
 
     let mut s = String::new();
     match file.read_to_string(&mut s) {
-        Ok(_) => return interpret(&s, debug),
+        Ok(_) => return rlox::interpret(&s, debug),
         Err(why) => panic!("Failed to read {}: {}", path_display, why),
     };
-}
-
-fn interpret(source: &String, debug: bool) -> InterpretResult {
-    let mut resolver = Resolver::new();
-    let compiler = Compiler::new(source, &mut resolver);
-    let result = compiler.compile(debug);
-    if let None = result {
-        return InterpretResult::InterpretCompileError;
-    }
-
-    let vm = if debug {
-        VM::new(ExecutionMode::Trace, result.unwrap())
-    } else {
-        VM::new(ExecutionMode::Default, result.unwrap())
-    };
-    vm.run()
 }

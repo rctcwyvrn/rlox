@@ -8,17 +8,11 @@ use crate::value::{
     is_falsey, values_equal, HeapObj, HeapObjType, HeapObjVal, ObjBoundMethod, ObjClosure,
     ObjInstance, ObjPointer, Value,
 };
+use crate::InterpretResult;
 
 use std::collections::HashMap;
 
 const FRAMES_MAX: usize = 64;
-
-#[derive(Debug, PartialEq)]
-pub enum InterpretResult {
-    InterpretOK,
-    InterpretCompileError,
-    InterpretRuntimeError,
-}
 
 #[derive(Debug)]
 pub enum ExecutionMode {

@@ -169,7 +169,7 @@ impl Scanner<'_> {
 
         if !self.is_at_end() && self.peek() == b'.' && is_digit(self.peek_next()) {
             self.advance();
-            while is_digit(self.peek()) {
+            while !self.is_at_end() && is_digit(self.peek()) {
                 self.advance();
             }
         }

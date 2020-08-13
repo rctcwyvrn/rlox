@@ -58,6 +58,8 @@ impl Resolver {
     /// Attempt to resolve the variable name by looking at the locals of the parent (which sits at child_index - 1)
     /// If found, add an upvalue to self.upvalues and return the index in the UpValues vec
     fn recursive_resolve(&mut self, name: &str, child_index: usize) -> Option<usize> {
+        if child_index == 0 { return None } // Base case: Everyone failed to resolve the upvalue
+
         let parent = self.stack.get(child_index - 1)?;
         let mut upval_index = None;
         for (i, local) in parent.locals.iter().enumerate() {

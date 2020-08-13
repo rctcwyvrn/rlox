@@ -92,7 +92,7 @@ impl Scanner<'_> {
 
     /// One stricter than is_at_end, must be checked before calling peek_next()
     fn can_peek_next(&self) -> bool {
-        self.cur_pos <= self.code.len() - 2
+        self.cur_pos + 2 <= self.code.len() // +2 because self.code.len() does not necesarily need to be greater than 2, and subtracting can cause a panic
     }
 
     fn advance(&mut self) -> u8 {

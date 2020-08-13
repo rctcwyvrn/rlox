@@ -1,0 +1,3 @@
+while(true){
+    print("hi"); // BUG: The current implementation cannot have a while loop as the first parsed expression, because it cannot jump back to instruction 0...
+}

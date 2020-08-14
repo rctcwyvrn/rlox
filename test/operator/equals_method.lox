@@ -1,4 +1,4 @@
-// Bound methods have identity equality.
+// Bound methods have identity equality
 class Foo {
   method() {}
 }
@@ -6,8 +6,8 @@ class Foo {
 var foo = Foo();
 var fooMethod = foo.method;
 
-// Same bound method.
+// Same bound method
 print fooMethod == fooMethod; // expect: true
 
-// Different closurizations.
+// Different closurizations
 print foo.method == foo.method; // expect: false

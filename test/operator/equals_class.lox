@@ -1,4 +1,4 @@
-// Bound methods have identity equality.
+// Bound methods have identity equality
 class Foo {}
 class Bar {}
 

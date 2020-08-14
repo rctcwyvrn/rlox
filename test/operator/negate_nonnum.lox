@@ -1,1 +1,1 @@
--"s"; // expect runtime error: Operand must be a number
+-"s"; // expect runtime error: Attempted to negate a non-number value

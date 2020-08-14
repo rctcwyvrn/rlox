@@ -2,6 +2,6 @@ class A {}
 
 class B < A {
   method() {
-    super.; // Error at ';': Expect superclass method name
+    super.; // Error at ';': Expected superclass method name
   }
 }

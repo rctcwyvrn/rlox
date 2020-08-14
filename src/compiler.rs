@@ -1,5 +1,5 @@
 use crate::chunk::{Chunk, ClassChunk, FunctionChunk, FunctionType, Instr, OpCode};
-use crate::debug::{disassemble_class_chunk, disassemble_fn_chunk, DEBUG};
+use crate::debug::{disassemble_class_chunk, disassemble_fn_chunk};
 use crate::prec::{get_rule, ParseFn, Precedence};
 use crate::resolver::Resolver;
 use crate::scanner::{Scanner, Token, TokenType};
@@ -19,10 +19,11 @@ pub struct Compiler<'a> {
     current_function: usize,      // The current FunctionChunk
     parent_functions: Vec<usize>, // Which FunctionChunk should the the compiler return to after. Acts as a stack
 
-    resolver: &'a mut Resolver, // Manages the slots for the local variables and upvalues, represented as a Vec of individal ResolverNodes
+    resolver: Resolver, // Manages the slots for the local variables and upvalues, represented as a Vec of individal ResolverNodes
 
     had_error: bool,
     panic_mode: bool,
+    quiet_mode: bool,
 }
 
 impl Compiler<'_> {
@@ -88,6 +89,14 @@ impl Compiler<'_> {
         if self.panic_mode {
             return;
         } // Ignore other errors while in panic_mode
+
+        self.had_error = true;
+        self.panic_mode = true;
+
+        if self.quiet_mode {
+            return;
+        }
+
         let token = self.previous();
         eprint!("[Line {}] Error", token.line_num);
         match token.token_type {
@@ -97,9 +106,6 @@ impl Compiler<'_> {
         }
 
         eprintln!(": {}", message);
-
-        self.had_error = true;
-        self.panic_mode = true;
     }
 
     fn synchronize(&mut self) {
@@ -151,7 +157,7 @@ impl Compiler<'_> {
             None => {
                 self.constants.push(value);
                 self.constants.len() - 1
-            },
+            }
         }
     }
 
@@ -164,25 +170,29 @@ impl Compiler<'_> {
     }
 
     /// Emits OpCode::OpJump
+    /// 
+    /// Returns the index of the jump instruction for patching
     fn emit_jump(&mut self) -> usize {
         self.emit_instr(OpCode::OpJump(usize::max_value()));
         self.current_chunk().code.len() - 1
     }
 
     /// Emits OpCode::OpJumpIfFalse
+    /// 
+    /// Returns the index of the jump instruction for patching
     fn emit_jif(&mut self) -> usize {
         self.emit_instr(OpCode::OpJumpIfFalse(usize::max_value()));
         self.current_chunk().code.len() - 1
     }
 
     /// Given the index of the jump instruction in the chunk, update the opcode to jump to the instruction after the current one
-    fn patch_jump(&mut self, offset: usize) {
-        let jump_amount = self.current_chunk().code.len() - offset - 1;
+    fn patch_jump(&mut self, index: usize) {
+        let jump_amount = self.current_chunk().code.len() - index;
         if jump_amount > usize::max_value() {
             self.error("Too much code to jump over");
         }
 
-        let jump_instr = self.current_chunk().code.get_mut(offset).unwrap();
+        let jump_instr = self.current_chunk().code.get_mut(index).unwrap();
         macro_rules! replace_jump {
             ($jump_type: path) => {{
                 jump_instr.op_code = $jump_type(jump_amount)
@@ -192,13 +202,7 @@ impl Compiler<'_> {
         match jump_instr.op_code {
             OpCode::OpJump(_) => replace_jump!(OpCode::OpJump),
             OpCode::OpJumpIfFalse(_) => replace_jump!(OpCode::OpJumpIfFalse),
-            _ => {
-                let instr = self.current_chunk_ref().code.get(offset).unwrap().clone();
-                self.error(&format!(
-                    "Attempted to patch a non_jump op code instruction: {:?}",
-                    instr
-                ));
-            }
+            _ => panic!("Compiler panic: Attempted to patch a non_jump op code instruction: {:?}", jump_instr),
         }
     }
 
@@ -464,18 +468,20 @@ impl Compiler<'_> {
 
         self.emit_instr(OpCode::OpPop); // Pop off the if conditional in the 'then' case
         self.statement(); // Then case
-        let else_jump = self.emit_jump(); // Keep track of where we put the jump to go over the else statement
-        self.patch_jump(jump_index);
 
         if self.match_cur(TokenType::TokenElse) {
+            let else_jump = self.emit_jump(); // Keep track of where we put the jump to go over the else statement
+            self.patch_jump(jump_index);
             self.emit_instr(OpCode::OpPop); // Pop off the if conditional if we jump over the 'then' case
             self.statement(); // Else case
+            self.patch_jump(else_jump);
+        } else {
+            self.patch_jump(jump_index); // No else case, so just jump to right after
         }
-        self.patch_jump(else_jump);
     }
 
     fn while_statement(&mut self) {
-        let loop_start = self.current_chunk().code.len() - 1;
+        let loop_start = self.current_chunk().code.len();
 
         self.consume(TokenType::TokenLeftParen, "Expected '(' after 'while'");
         self.expression();
@@ -508,7 +514,7 @@ impl Compiler<'_> {
             self.expression_statement(); //
         }
 
-        let mut loop_start = self.current_chunk().code.len() - 1; // Loop should include 2nd and 3rd clauses (if they exist)
+        let mut loop_start = self.current_chunk().code.len(); // Loop should include 2nd and 3rd clauses (if they exist)
         let mut exit_jump = None;
 
         // Loop conditional
@@ -526,7 +532,7 @@ impl Compiler<'_> {
             // Jump to body, set this point to be the one to loop back to after executing the body, jump to next iteration
             let body_jump = self.emit_jump(); // Jump to after the increment and the loop
 
-            let increment_start = self.current_chunk().code.len() - 1;
+            let increment_start = self.current_chunk().code.len();
             self.expression(); // Parse the increment expression
             self.emit_instr(OpCode::OpPop); // Pop the remaining value
             self.consume(
@@ -689,8 +695,14 @@ impl Compiler<'_> {
     }
 
     fn number(&mut self) {
-        let value = self.previous().lexemme.parse::<f64>().unwrap(); // sketch but ok
-        self.emit_constant(Value::Double(value));
+        // We trust that the scanner has given us something that looks like a number (124214.52)
+        // BUT the scanner does NOT check the size, so this parse to f64 can still fail due to overflow
+
+        if let Ok(value) = self.previous().lexemme.parse::<f64>() {
+            self.emit_constant(Value::Double(value));
+        } else {
+            self.error(format!("Invalid number").as_str())
+        }
     }
 
     fn literal(&mut self) {
@@ -878,7 +890,7 @@ impl Compiler<'_> {
         self.current_function = self.parent_functions.pop().unwrap();
     }
 
-    pub fn new<'a>(code: &'a String, resolver: &'a mut Resolver) -> Compiler<'a> {
+    pub fn new<'a>(code: &'a String, quiet: bool) -> Compiler<'a> {
         let mut scanner = Scanner::new(code);
 
         let mut tokens = Vec::new();
@@ -896,20 +908,21 @@ impl Compiler<'_> {
             functions,
             current_function: 0,
             parent_functions: Vec::new(),
-            resolver,
+            resolver: Resolver::new(),
             had_error: false,
             panic_mode: false,
+            quiet_mode: quiet,
         }
     }
 
     // Note: is this an expensive move (moving self into this function) ? Is it less expensive to just move/copy the FunctionChunks afterwards?
-    pub fn compile(mut self) -> Option<CompilationResult> {
+    pub fn compile(mut self, debug: bool) -> Option<CompilationResult> {
         while !self.match_cur(TokenType::TokenEOF) {
             self.declaration();
         }
         self.end_compilation();
 
-        if DEBUG {
+        if debug {
             for fn_chunk in self.functions.iter() {
                 if fn_chunk.fn_type != FunctionType::Method
                     && fn_chunk.fn_type != FunctionType::Initializer
@@ -919,7 +932,12 @@ impl Compiler<'_> {
             }
 
             for class_chunk in self.classes.iter() {
-                disassemble_class_chunk(&class_chunk, &self.functions, &self.classes, &self.constants);
+                disassemble_class_chunk(
+                    &class_chunk,
+                    &self.functions,
+                    &self.classes,
+                    &self.constants,
+                );
             }
         }
 

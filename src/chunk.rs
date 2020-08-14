@@ -67,9 +67,7 @@ impl Chunk {
     }
 
     pub fn new() -> Chunk {
-        Chunk {
-            code: Vec::new(),
-        }
+        Chunk { code: Vec::new() }
     }
 }
 

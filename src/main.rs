@@ -1,56 +1,27 @@
-mod chunk;
-mod compiler;
-mod debug;
-mod gc;
-mod native;
-mod prec;
-mod resolver;
-mod scanner;
-mod value;
-mod vm;
-
-use crate::compiler::Compiler;
-use crate::debug::DEBUG;
-use crate::resolver::Resolver;
-use crate::vm::{ExecutionMode, InterpretResult, VM};
+use rlox::InterpretResult;
 
 use std::env;
 use std::fs::File;
-use std::io;
 use std::io::prelude::*;
 use std::path::Path;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() == 1 {
-        repl();
-    } else if args.len() == 2 {
-        let result = run_file(args.get(1).unwrap());
+    if args.len() >= 2 {
+        let debug = (args.len() == 3) && args[2].eq("--debug");
+        let result = run_file(args.get(1).unwrap(), debug);
         std::process::exit(match result {
             InterpretResult::InterpretOK => 0,
             InterpretResult::InterpretCompileError => 65,
             InterpretResult::InterpretRuntimeError => 70,
         })
     } else {
-        println!("Usage: rlox [path]");
+        println!("Usage: rlox path [--debug]");
     }
 }
 
-fn repl() {
-    let mut input = String::new();
-    loop {
-        match io::stdin().read_line(&mut input) {
-            Ok(_) => {
-                interpret(&input);
-            }
-            Err(error) => println!("Failed to get stdin: {}", error),
-        }
-        input.clear();
-    }
-}
-
-fn run_file(filename: &String) -> InterpretResult {
+fn run_file(filename: &String, debug: bool) -> InterpretResult {
     let path = Path::new(&filename);
     let path_display = path.display();
 
@@ -61,23 +32,7 @@ fn run_file(filename: &String) -> InterpretResult {
 
     let mut s = String::new();
     match file.read_to_string(&mut s) {
-        Ok(_) => return interpret(&s),
+        Ok(_) => return rlox::interpret(&s, debug, false),
         Err(why) => panic!("Failed to read {}: {}", path_display, why),
     };
-}
-
-fn interpret(source: &String) -> InterpretResult {
-    let mut resolver = Resolver::new();
-    let compiler = Compiler::new(source, &mut resolver);
-    let result = compiler.compile();
-    if let None = result {
-        return InterpretResult::InterpretCompileError;
-    }
-
-    let vm = if DEBUG {
-        VM::new(ExecutionMode::Trace, result.unwrap())
-    } else {
-        VM::new(ExecutionMode::Default, result.unwrap())
-    };
-    vm.run()
 }

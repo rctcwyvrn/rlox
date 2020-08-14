@@ -85,12 +85,18 @@ impl Scanner<'_> {
         }
     }
 
+    /// If this is true, then the current position is invalid and cannot be peeked
     fn is_at_end(&self) -> bool {
         self.cur_pos == self.code.len()
     }
 
+    /// One stricter than is_at_end, must be checked before calling peek_next()
+    fn can_peek_next(&self) -> bool {
+        self.cur_pos + 2 <= self.code.len() // +2 because self.code.len() does not necesarily need to be greater than 2, and subtracting can cause a panic
+    }
+
     fn advance(&mut self) -> u8 {
-        let ret = self.code.as_bytes()[self.cur_pos];
+        let ret = self.peek();
         self.cur_pos += 1;
         ret
     }
@@ -98,7 +104,7 @@ impl Scanner<'_> {
     fn match_char(&mut self, expected: u8) -> bool {
         if self.is_at_end() {
             return false;
-        } else if self.code.as_bytes()[self.cur_pos] != expected {
+        } else if self.peek() != expected {
             return false;
         } else {
             self.cur_pos += 1;
@@ -111,11 +117,7 @@ impl Scanner<'_> {
     }
 
     fn peek_next(&self) -> u8 {
-        if self.is_at_end() {
-            b'0'
-        } else {
-            self.code.as_bytes()[self.cur_pos + 1]
-        }
+        self.code.as_bytes()[self.cur_pos + 1]
     }
 
     /// This function is gross and it also messes up sometimes near the end of files
@@ -128,9 +130,9 @@ impl Scanner<'_> {
                 self.advance();
                 self.cur_line += 1;
             } else if next == b'/' {
-                if self.peek_next() == b'/' {
+                if self.can_peek_next() && self.peek_next() == b'/' {
                     while !self.is_at_end() && self.peek() != b'\n' {
-                        self.advance();
+                        self.advance(); // Advance over the second '/' and the rest of the line, or until we hit the end of the file
                     }
 
                     if !self.is_at_end() {
@@ -167,9 +169,9 @@ impl Scanner<'_> {
             self.advance();
         }
 
-        if !self.is_at_end() && self.peek() == b'.' && is_digit(self.peek_next()) {
+        if self.can_peek_next() && self.peek() == b'.' && is_digit(self.peek_next()) {
             self.advance();
-            while is_digit(self.peek()) {
+            while !self.is_at_end() && is_digit(self.peek()) {
                 self.advance();
             }
         }

@@ -8,17 +8,11 @@ use crate::value::{
     is_falsey, values_equal, HeapObj, HeapObjType, HeapObjVal, ObjBoundMethod, ObjClosure,
     ObjInstance, ObjPointer, Value,
 };
+use crate::InterpretResult;
 
 use std::collections::HashMap;
 
 const FRAMES_MAX: usize = 64;
-
-#[derive(Debug, PartialEq)]
-pub enum InterpretResult {
-    InterpretOK,
-    InterpretCompileError,
-    InterpretRuntimeError,
-}
 
 #[derive(Debug)]
 pub enum ExecutionMode {
@@ -174,11 +168,11 @@ impl VMState {
     }
 
     fn jump(&mut self, offset: usize) {
-        self.frame_mut().ip += offset;
+        self.frame_mut().ip += offset - 1;
     }
 
     fn jump_back(&mut self, neg_offset: usize) {
-        self.frame_mut().ip -= neg_offset;
+        self.frame_mut().ip -= neg_offset + 1;
     }
 
     fn capture_upvalue(&self, upvalue: &UpValue) -> Value {
@@ -353,6 +347,7 @@ impl VMState {
 /// Contains all the information outputted by the compiler
 /// ie: All function and class definitions
 pub struct VM {
+    quiet_mode: bool,
     mode: ExecutionMode,
     pub functions: Vec<FunctionChunk>,
     pub classes: Vec<ClassChunk>,
@@ -360,8 +355,9 @@ pub struct VM {
 }
 
 impl VM {
-    pub fn new<'a>(mode: ExecutionMode, result: CompilationResult) -> VM {
+    pub fn new<'a>(mode: ExecutionMode, result: CompilationResult, quiet: bool) -> VM {
         VM {
+            quiet_mode: quiet,
             mode,
             functions: result.functions,
             classes: result.classes,
@@ -370,6 +366,10 @@ impl VM {
     }
 
     fn runtime_error(&self, msg: &str, state: &VMState) {
+        if self.quiet_mode {
+            return;
+        }
+
         eprintln!("{}", msg);
         for call_frame in state.frames.iter().rev() {
             let function = self.functions.get(call_frame.function).unwrap();
@@ -385,7 +385,7 @@ impl VM {
     }
 
     fn get_variable_name(&self, index: usize) -> String {
-        let name_val = self.constants[index].clone(); 
+        let name_val = self.constants[index].clone();
         if let Value::LoxString(var_name) = name_val {
             return var_name;
         } else {
@@ -430,7 +430,7 @@ impl VM {
             }
 
             let instr = instr.unwrap();
-            state.increment_ip();
+            state.increment_ip(); // Preincrement the ip so OpLoops to 0 are possible
 
             if let ExecutionMode::Trace = self.mode {
                 debug_trace(&self, &instr, &state);
@@ -512,8 +512,8 @@ impl VM {
                                 let value = instance.fields.get(&name).unwrap().clone();
                                 let index = state.stack.len() - 1 - arg_count;
                                 state.stack[index] = value; // Remove the instance and replace with the value
-                                state.call_value(arg_count, &self.functions, &self.classes) // Perform the call
-
+                                state.call_value(arg_count, &self.functions, &self.classes)
+                            // Perform the call
                             } else if class_def.methods.contains_key(&name) {
                                 // We know that the top of the stack is LoxPointer | arg1 | arg2
                                 // So we can go ahead and call
@@ -674,9 +674,7 @@ impl VM {
 
                 OpCode::OpClass(index) => state.push(Value::LoxClass(index)),
 
-                OpCode::OpConstant(index) => {
-                    state.push(self.constants[index].clone())
-                } // FIXME
+                OpCode::OpConstant(index) => state.push(self.constants[index].clone()), // FIXME
                 OpCode::OpTrue => state.push(Value::Bool(true)),
                 OpCode::OpFalse => state.push(Value::Bool(false)),
                 OpCode::OpNil => state.push(Value::Nil),

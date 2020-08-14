@@ -73,7 +73,7 @@ impl GC {
                     }
                     index
                 }
-                None => 0,
+                None => panic!("VM panic!"),
             }
         };
 
@@ -150,14 +150,14 @@ impl GC {
                     }
                     match &obj.obj {
                         HeapObjVal::LoxClosure(closure) => {
-                            // This really really isn't great for performance
+                            // Fixme: This really really isn't great for performance
                             // The borrow checker gets upset because closure is immutable but can be modified by the &mut self call to mark_value
                             for val in closure.values.clone() {
                                 self.mark_value(&val);
                             }
                         },
                         HeapObjVal::LoxInstance(instance) => {
-                            // Same issue as LoxClosure
+                            // Fixme: Same issue as LoxClosure
                             for val in instance.fields.clone().values() {
                                 self.mark_value(&val);
                             }

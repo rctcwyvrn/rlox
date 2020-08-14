@@ -1,8 +1,6 @@
 use crate::chunk::{Chunk, ClassChunk, FunctionChunk, Instr, OpCode};
 use crate::value::Value;
 
-pub const DEBUG: bool = true;
-
 pub fn disassemble_class_chunk(
     class_chunk: &ClassChunk,
     function_defs: &Vec<FunctionChunk>,
@@ -22,7 +20,7 @@ pub fn disassemble_class_chunk(
     }
 }
 
-pub fn disassemble_fn_chunk(fn_chunk: &FunctionChunk, constants:&Vec<Value>) {
+pub fn disassemble_fn_chunk(fn_chunk: &FunctionChunk, constants: &Vec<Value>) {
     match &fn_chunk.name {
         Some(name) => eprintln!("== <fn {}> ==============", name),
         None => eprintln!("== <script> =============="),
@@ -67,12 +65,12 @@ pub fn disassemble_instruction(instr: &Instr, instr_offset: usize, constants: &V
         OpCode::OpJump(jump_offset) | OpCode::OpJumpIfFalse(jump_offset) => eprintln!(
             "\t{:?} | jump -> {}",
             instr.op_code,
-            instr_offset + jump_offset + 1
+            instr_offset + jump_offset
         ),
         OpCode::OpLoop(neg_offset) => eprintln!(
             "\t{:?} | loop back -> {}",
             instr.op_code,
-            instr_offset - neg_offset + 1
+            instr_offset - neg_offset
         ),
         _ => eprintln!("\t{:?}", instr.op_code),
     }

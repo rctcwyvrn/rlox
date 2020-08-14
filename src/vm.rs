@@ -686,7 +686,7 @@ impl VM {
                     } else if let (Value::Double(a), Value::Double(b)) = t {
                         state.push(Value::Double(a + b))
                     } else {
-                        self.runtime_error("Operands must be numbers or strings", &state);
+                        self.runtime_error("Operands must be two numbers or two strings", &state);
                         return InterpretResult::InterpretRuntimeError;
                     }
                 }

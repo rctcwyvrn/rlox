@@ -23,7 +23,7 @@ impl Value {
             Value::Double(x) => format!("{}", x),
             Value::Bool(x) => format!("{}", x),
             Value::LoxString(x) => format!("{}", x),
-            Value::Nil => String::from("Nil"),
+            Value::Nil => String::from("nil"),
             Value::LoxFunction(x) => format!(
                 "<fn {}>",
                 vm.functions.get(*x).unwrap().name.as_ref().unwrap()

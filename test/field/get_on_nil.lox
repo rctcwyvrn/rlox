@@ -1,1 +1,1 @@
-nil.foo; // expect runtime error: Only class instances can access properties with '.' Found Nil instead
+nil.foo; // expect runtime error: Only class instances can access properties with '.' Found nil instead

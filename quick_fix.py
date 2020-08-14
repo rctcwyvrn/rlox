@@ -15,9 +15,13 @@ def process(file):
 				# 	change = True
 				# 	lines[i] = line.replace("Cannot use 'super' outside of a class", "Cannot use keyword 'super' outside of a class")
 
-				if "Expect" in line and "Expected" not in line:
+				# if "Expect" in line and "Expected" not in line:
+				# 	change = True
+				# 	lines[i] = line.replace("Expect","Expected")
+
+				if "Cannot use 'super' in a class with no superclass" in line:
 					change = True
-					lines[i] = line.replace("Expect","Expected")
+					lines[i] = line.replace("Cannot use 'super' in a class with no superclass","Cannot use keyword 'super' in a class which does not inherit a class")
 	if change:
 		print(file,lines)
 		with open(file,"w") as f:

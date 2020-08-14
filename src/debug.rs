@@ -65,12 +65,12 @@ pub fn disassemble_instruction(instr: &Instr, instr_offset: usize, constants: &V
         OpCode::OpJump(jump_offset) | OpCode::OpJumpIfFalse(jump_offset) => eprintln!(
             "\t{:?} | jump -> {}",
             instr.op_code,
-            instr_offset + jump_offset + 1
+            instr_offset + jump_offset
         ),
         OpCode::OpLoop(neg_offset) => eprintln!(
             "\t{:?} | loop back -> {}",
             instr.op_code,
-            instr_offset - neg_offset + 1
+            instr_offset - neg_offset
         ),
         _ => eprintln!("\t{:?}", instr.op_code),
     }

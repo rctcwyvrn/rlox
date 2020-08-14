@@ -170,25 +170,29 @@ impl Compiler<'_> {
     }
 
     /// Emits OpCode::OpJump
+    /// 
+    /// Returns the index of the jump instruction for patching
     fn emit_jump(&mut self) -> usize {
         self.emit_instr(OpCode::OpJump(usize::max_value()));
         self.current_chunk().code.len() - 1
     }
 
     /// Emits OpCode::OpJumpIfFalse
+    /// 
+    /// Returns the index of the jump instruction for patching
     fn emit_jif(&mut self) -> usize {
         self.emit_instr(OpCode::OpJumpIfFalse(usize::max_value()));
         self.current_chunk().code.len() - 1
     }
 
     /// Given the index of the jump instruction in the chunk, update the opcode to jump to the instruction after the current one
-    fn patch_jump(&mut self, offset: usize) {
-        let jump_amount = self.current_chunk().code.len() - offset - 1;
+    fn patch_jump(&mut self, index: usize) {
+        let jump_amount = self.current_chunk().code.len() - index;
         if jump_amount > usize::max_value() {
             self.error("Too much code to jump over");
         }
 
-        let jump_instr = self.current_chunk().code.get_mut(offset).unwrap();
+        let jump_instr = self.current_chunk().code.get_mut(index).unwrap();
         macro_rules! replace_jump {
             ($jump_type: path) => {{
                 jump_instr.op_code = $jump_type(jump_amount)
@@ -198,13 +202,7 @@ impl Compiler<'_> {
         match jump_instr.op_code {
             OpCode::OpJump(_) => replace_jump!(OpCode::OpJump),
             OpCode::OpJumpIfFalse(_) => replace_jump!(OpCode::OpJumpIfFalse),
-            _ => {
-                let instr = self.current_chunk_ref().code.get(offset).unwrap().clone();
-                self.error(&format!(
-                    "Attempted to patch a non_jump op code instruction: {:?}",
-                    instr
-                ));
-            }
+            _ => panic!("Compiler panic: Attempted to patch a non_jump op code instruction: {:?}", jump_instr),
         }
     }
 
@@ -470,18 +468,20 @@ impl Compiler<'_> {
 
         self.emit_instr(OpCode::OpPop); // Pop off the if conditional in the 'then' case
         self.statement(); // Then case
-        let else_jump = self.emit_jump(); // Keep track of where we put the jump to go over the else statement
-        self.patch_jump(jump_index);
 
         if self.match_cur(TokenType::TokenElse) {
+            let else_jump = self.emit_jump(); // Keep track of where we put the jump to go over the else statement
+            self.patch_jump(jump_index);
             self.emit_instr(OpCode::OpPop); // Pop off the if conditional if we jump over the 'then' case
             self.statement(); // Else case
+            self.patch_jump(else_jump);
+        } else {
+            self.patch_jump(jump_index); // No else case, so just jump to right after
         }
-        self.patch_jump(else_jump);
     }
 
     fn while_statement(&mut self) {
-        let loop_start = self.current_chunk().code.len() - 1;
+        let loop_start = self.current_chunk().code.len();
 
         self.consume(TokenType::TokenLeftParen, "Expected '(' after 'while'");
         self.expression();
@@ -514,7 +514,7 @@ impl Compiler<'_> {
             self.expression_statement(); //
         }
 
-        let mut loop_start = self.current_chunk().code.len() - 1; // Loop should include 2nd and 3rd clauses (if they exist)
+        let mut loop_start = self.current_chunk().code.len(); // Loop should include 2nd and 3rd clauses (if they exist)
         let mut exit_jump = None;
 
         // Loop conditional
@@ -532,7 +532,7 @@ impl Compiler<'_> {
             // Jump to body, set this point to be the one to loop back to after executing the body, jump to next iteration
             let body_jump = self.emit_jump(); // Jump to after the increment and the loop
 
-            let increment_start = self.current_chunk().code.len() - 1;
+            let increment_start = self.current_chunk().code.len();
             self.expression(); // Parse the increment expression
             self.emit_instr(OpCode::OpPop); // Pop the remaining value
             self.consume(

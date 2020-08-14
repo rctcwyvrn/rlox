@@ -168,11 +168,11 @@ impl VMState {
     }
 
     fn jump(&mut self, offset: usize) {
-        self.frame_mut().ip += offset;
+        self.frame_mut().ip += offset - 1;
     }
 
     fn jump_back(&mut self, neg_offset: usize) {
-        self.frame_mut().ip -= neg_offset;
+        self.frame_mut().ip -= neg_offset + 1;
     }
 
     fn capture_upvalue(&self, upvalue: &UpValue) -> Value {
@@ -430,7 +430,7 @@ impl VM {
             }
 
             let instr = instr.unwrap();
-            state.increment_ip();
+            state.increment_ip(); // Preincrement the ip so OpLoops to 0 are possible
 
             if let ExecutionMode::Trace = self.mode {
                 debug_trace(&self, &instr, &state);

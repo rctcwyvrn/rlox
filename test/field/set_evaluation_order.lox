@@ -1,2 +1,1 @@
-undefined1.bar // expect runtime error: Undefined variable 'undefined1'.
-  = undefined2;
+undefined1.bar = undefined2; // expect runtime error: Undefined variable 'undefined1'.

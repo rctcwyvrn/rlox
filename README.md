@@ -7,7 +7,7 @@ Considering this was my first project in rust and it was translating from a lang
 
 rlox is fast and reasonably well structured. Some things that were difficult for clox to implement basically dropped out for free because of my design (superclasses), but some things were a nightmare to implement due to not knowing this sort of structure would be needed (closures).
 
-Overall a very fun experience and a nice projec that I feel quite proud of
+Overall a very fun experience and a nice project that I feel quite proud of
 
 Todo:
 -  Clean up all the fixme and todos in the code

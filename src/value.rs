@@ -74,19 +74,14 @@ pub fn is_falsey(val: &Value) -> bool {
 }
 
 pub fn values_equal(t: (Value, Value)) -> bool {
-    if let (Value::Double(x), Value::Double(y)) = t {
-        return x == y;
-    } else if let (Value::Bool(x), Value::Bool(y)) = t {
-        return x == y;
-    } else if t.0 == Value::Nil {
-        return true;
-    } else if let (Value::LoxString(x), Value::LoxString(y)) = t {
-        return x.eq(&y);
-    } else if let (Value::LoxPointer(p1), Value::LoxPointer(p2)) = t {
-        return p1 == p2;
+    match t {
+        (Value::Double(x), Value::Double(y)) => x == y,
+        (Value::Bool(x), Value::Bool(y)) => x == y,
+        (Value::Nil, _) => true,
+        (Value::LoxString(x), Value::LoxString(y)) => x.eq(&y),
+        (Value::LoxPointer(x), Value::LoxPointer(y)) => x == y,
+        _ => false,
     }
-
-    return false;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

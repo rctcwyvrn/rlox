@@ -1,0 +1,360 @@
+=== all ===
+
+FAIL test/assignment/infix_operator.lox
+     Unexpected error:
+     [3] Error at '"value"': Expected ';' after value
+     Missing expected error: [3] Error at '=': Invalid assignment target
+
+
+FAIL test/assignment/prefix_operator.lox
+     Unexpected error:
+     [2] Error at '"value"': Expected ';' after value
+     Missing expected error: [2] Error at '=': Invalid assignment target
+
+
+FAIL test/assignment/to_this.lox
+     Unexpected error:
+     [3] Error at '"value"': Expected ';' after value
+     Missing expected error: [3] Error at '=': Invalid assignment target
+
+
+FAIL test/class/local_reference_self.lox
+     Unexpected output on stderr:
+     Undefined variable 'Foo'
+     Unexpected output on stderr:
+     [line 4] in returnSelf
+     Unexpected output on stderr:
+     [line 8] in script
+     Expected return code 0 and got 70. Stderr:
+     Undefined variable 'Foo'
+     [line 4] in returnSelf
+     [line 8] in script
+     Missing expected output '<class 0>' on line 8.
+
+
+FAIL test/closure/assign_to_closure.lox
+     Unexpected output on stderr:
+     Undefined variable 'local'
+     Unexpected output on stderr:
+     [line 7] in f_
+     Unexpected output on stderr:
+     [line 21] in script
+     Expected return code 0 and got 70. Stderr:
+     Undefined variable 'local'
+     [line 7] in f_
+     [line 21] in script
+     Missing expected output 'local' on line 22.
+     Missing expected output 'after f' on line 23.
+     Missing expected output 'after f' on line 26.
+     Missing expected output 'after g' on line 27.
+
+
+FAIL test/closure/closed_closure_in_function.lox
+     Unexpected output on stderr:
+     Undefined variable 'local'
+     Unexpected output on stderr:
+     [line 6] in f_
+     Unexpected output on stderr:
+     [line 11] in script
+     Expected return code 0 and got 70. Stderr:
+     Undefined variable 'local'
+     [line 6] in f_
+     [line 11] in script
+     Missing expected output 'local' on line 11.
+
+
+FAIL test/closure/nested_closure.lox
+     Expected output 'c' on line 25 and got 'b'.
+
+
+FAIL test/closure/open_closure_in_function.lox
+     Unexpected output on stderr:
+     Undefined variable 'local'
+     Unexpected output on stderr:
+     [line 4] in f
+     Unexpected output on stderr:
+     [line 6] in script
+     Expected return code 0 and got 70. Stderr:
+     Undefined variable 'local'
+     [line 4] in f
+     [line 6] in script
+     Missing expected output 'local' on line 4.
+
+
+FAIL test/closure/reference_closure_multiple_times.lox
+     Unexpected output on stderr:
+     Undefined variable 'a'
+     Unexpected output on stderr:
+     [line 6] in f_
+     Unexpected output on stderr:
+     [line 12] in script
+     Expected return code 0 and got 70. Stderr:
+     Undefined variable 'a'
+     [line 6] in f_
+     [line 12] in script
+     Missing expected output 'a' on line 13.
+     Missing expected output 'a' on line 14.
+
+
+FAIL test/closure/reuse_closure_slot.lox
+     Unexpected output on stderr:
+     Undefined variable 'a'
+     Unexpected output on stderr:
+     [line 6] in f_
+     Unexpected output on stderr:
+     [line 14] in script
+     Expected return code 0 and got 70. Stderr:
+     Undefined variable 'a'
+     [line 6] in f_
+     [line 14] in script
+     Missing expected output 'a' on line 14.
+
+
+FAIL test/closure/shadow_closure_with_local.lox
+     Unexpected output on stderr:
+     Undefined variable 'foo'
+     Unexpected output on stderr:
+     [line 5] in f
+     Unexpected output on stderr:
+     [line 11] in script
+     Expected return code 0 and got 70. Stderr:
+     Undefined variable 'foo'
+     [line 5] in f
+     [line 11] in script
+     Missing expected output 'closure' on line 5.
+     Missing expected output 'shadow' on line 7.
+     Missing expected output 'closure' on line 9.
+
+
+FAIL test/closure/unused_later_closure.lox
+     Unexpected output on stderr:
+     Undefined variable 'a'
+     Unexpected output on stderr:
+     [line 15] in returnA
+     Unexpected output on stderr:
+     [line 27] in script
+     Expected return code 0 and got 70. Stderr:
+     Undefined variable 'a'
+     [line 15] in returnA
+     [line 27] in script
+     Missing expected output 'a' on line 27.
+
+
+FAIL test/constructor/missing_arguments.lox
+     Expected runtime error 'Expected 2 arguments but got 1' and got:
+     Expected 2 arguments but got 1 instead
+
+
+FAIL test/field/get_on_function.lox
+     Expected runtime error 'Only class instances can access properties with '.' Found <fn> instead' and got:
+     Only class instances can access properties with '.' Found <pointer 0> to <fn foo | ObjClosure { function: 1, values: [] }> instead
+
+
+FAIL test/field/set_on_function.lox
+     Expected runtime error 'Only class instances can access properties with '.' Found <fn> instead' and got:
+     Only class instances can access properties with '.' Found <pointer 0> to <fn foo | ObjClosure { function: 1, values: [] }> instead
+
+
+FAIL test/field/undefined.lox
+     Expected runtime error 'Undefined property 'bar'' and got:
+     Undefined property 'bar' in ObjInstance { class: 0, fields: {} }
+
+
+FAIL test/for/closure_in_body.lox
+     Unexpected output on stderr:
+     Undefined variable 'i'
+     Unexpected output on stderr:
+     [line 8] in f
+     Unexpected output on stderr:
+     [line 17] in script
+     Expected return code 0 and got 70. Stderr:
+     Undefined variable 'i'
+     [line 8] in f
+     [line 17] in script
+     Missing expected output '4' on line 17.
+     Missing expected output '1' on line 18.
+     Missing expected output '4' on line 19.
+     Missing expected output '2' on line 20.
+     Missing expected output '4' on line 21.
+     Missing expected output '3' on line 22.
+
+
+FAIL test/for/scope.lox
+     Unexpected output on stderr:
+     Operands must be numbers
+     Unexpected output on stderr:
+     [line 5] in script
+     Expected return code 0 and got 70. Stderr:
+     Operands must be numbers
+     [line 5] in script
+     Missing expected output '0' on line 6.
+     Missing expected output '-1' on line 10.
+     Missing expected output 'after' on line 20.
+     Missing expected output '0' on line 24.
+
+
+FAIL test/for/statement_condition.lox
+     Missing expected error: [3] Error at ')': Expected ';' after expression
+
+
+FAIL test/for/statement_initializer.lox
+     Missing expected error: [3] Error at ')': Expected ';' after expression
+
+
+FAIL test/function/local_recursion.lox
+     Unexpected output on stderr:
+     Undefined variable 'fib'
+     Unexpected output on stderr:
+     [line 4] in fib
+     Unexpected output on stderr:
+     [line 7] in script
+     Expected return code 0 and got 70. Stderr:
+     Undefined variable 'fib'
+     [line 4] in fib
+     [line 7] in script
+     Missing expected output '21' on line 7.
+
+
+FAIL test/function/print.lox
+     Expected output '<native fn>' on line 4 and got '<native_fn>'.
+
+
+FAIL test/function/too_many_parameters.lox
+     Unexpected error:
+     [257] Error at ',': Cannot have more than 255 parameters
+     Missing expected error: [257] Error at 'a': Cannot have more than 255 parameters
+
+
+FAIL test/limit/loop_too_large.lox
+     Missing expected error: [2351] Error at '}': Loop body too large
+     Expected return code 65 and got 0. Stderr:
+
+
+FAIL test/limit/no_reuse_constants.lox
+     Missing expected error: [35] Error at '1': Too many constants in one chunk
+     Expected return code 65 and got 0. Stderr:
+
+
+FAIL test/limit/too_many_constants.lox
+     Missing expected error: [35] Error at '"oops"': Too many constants in one chunk
+     Expected return code 65 and got 0. Stderr:
+
+
+FAIL test/limit/too_many_locals.lox
+     Missing expected error: [52] Error at 'oops': Too many local variables in function
+     Expected return code 65 and got 0. Stderr:
+
+
+FAIL test/limit/too_many_upvalues.lox
+     Missing expected error: [102] Error at 'oops': Too many closure variables in function
+     Expected return code 65 and got 0. Stderr:
+
+
+FAIL test/method/too_many_parameters.lox
+     Unexpected error:
+     [258] Error at ',': Cannot have more than 255 parameters
+     Missing expected error: [258] Error at 'a': Cannot have more than 255 parameters
+
+
+FAIL test/number/decimal_point_at_eof.lox
+     Unexpected error:
+     [2] Error at end of file: Expected property name after '.'
+     Missing expected error: [2] Error at end: Expected property name after '.'
+
+
+FAIL test/operator/equals_class.lox
+     Expected output 'true' on line 5 and got 'false'.
+     Expected output 'true' on line 8 and got 'false'.
+     Expected output 'false' on line 11 and got 'true'.
+
+
+FAIL test/operator/equals_method.lox
+     Expected output 'true' on line 10 and got 'false'.
+
+
+FAIL test/regression/40.lox
+     Expected output 'false' on line 4 and got 'true'.
+
+
+FAIL test/string/unterminated.lox
+     Unexpected output on stderr:
+     [Line 2] Error: Expected expression
+     Missing expected error: [2] Error: Unterminated string
+
+
+FAIL test/super/extra_arguments.lox
+     Expected runtime error 'Expected 2 arguments but got 4' and got:
+     Expected 2 arguments but got 4 instead
+
+
+FAIL test/super/missing_arguments.lox
+     Expected runtime error 'Expected 2 arguments but got 1' and got:
+     Expected 2 arguments but got 1 instead
+
+
+FAIL test/super/no_superclass_method.lox
+     Expected runtime error 'Undefined property 'doesNotExist'' and got:
+     Undefined superclass method 'doesNotExist' for ObjInstance { class: 1, fields: {} }
+
+
+FAIL test/super/super_in_closure_in_inherited_method.lox
+     Expected output 'A' on line 26 and got 'B'.
+
+
+FAIL test/super/super_in_inherited_method.lox
+     Expected output 'A' on line 23 and got 'B'.
+
+
+FAIL test/super/super_without_dot.lox
+     Unexpected error:
+     [9] Error at end of file: Expected '}' after block
+
+
+FAIL test/super/super_without_name.lox
+     Unexpected error:
+     [8] Error at end of file: Expected '}' after block
+
+
+FAIL test/this/nested_class.lox
+     Expected output 'Outer instance' on line 3 and got '<pointer 0> to <instance 0>'.
+     Expected output 'Outer instance' on line 6 and got '<pointer 0> to <instance 0>'.
+     Expected output 'Inner instance' on line 10 and got '<pointer 2> to <instance 1>'.
+
+
+FAIL test/this/this_at_top_level.lox
+     Unexpected error:
+     [1] Error at 'this': Cannot use keyword 'this' outside of a class
+     Missing expected error: [1] Error at 'this': Cannot use 'this' outside of a class
+
+
+FAIL test/this/this_in_top_level_function.lox
+     Unexpected error:
+     [2] Error at 'this': Cannot use keyword 'this' outside of a class
+     Missing expected error: [2] Error at 'this': Cannot use 'this' outside of a class
+
+
+FAIL test/variable/shadow_and_local.lox
+     Expected output 'inner' on line 6 and got 'outer'.
+
+
+FAIL test/variable/shadow_local.lox
+     Expected output 'shadow' on line 5 and got 'local'.
+
+
+FAIL test/while/closure_in_body.lox
+     Unexpected output on stderr:
+     Undefined variable 'j'
+     Unexpected output on stderr:
+     [line 8] in f
+     Unexpected output on stderr:
+     [line 17] in script
+     Expected return code 0 and got 70. Stderr:
+     Undefined variable 'j'
+     [line 8] in f
+     [line 17] in script
+     Missing expected output '1' on line 17.
+     Missing expected output '2' on line 18.
+     Missing expected output '3' on line 19.
+
+
+198 tests passed. 47 tests failed.

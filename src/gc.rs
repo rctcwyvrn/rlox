@@ -7,9 +7,9 @@ use std::collections::HashMap;
 const DEBUG_GC: bool = false;
 const DEBUG_STRESS_GC: bool = false;
 
-const INIT_GC_THRESHOLD: usize = 20;
+const INIT_GC_THRESHOLD: usize = 200;
 const MIN_SCALING_FACTOR: f64 = 0.5;
-const MAX_SCALING_FACTOR: f64 = 1.2;
+const MAX_SCALING_FACTOR: f64 = 2.0;
 const SHRINK_THRESHOLD: f64 = 0.75; // Shrink if new_size < current_size * shrink_threshold => close to 1 means lots of shrinks, close to 0 means rarely shrink
 
 // The garbage collector. Let's go
@@ -244,8 +244,8 @@ impl GC {
         // => if diff = old_threshold, halve the threshold
 
         let old_threshold = self.next_gc_threshold as f64;
-        let slope = (MAX_SCALING_FACTOR - MIN_SCALING_FACTOR) / old_threshold;
-        let scaling_factor = slope * (diff as f64);
+        let slope: f64 = (MIN_SCALING_FACTOR - MAX_SCALING_FACTOR) / old_threshold;
+        let scaling_factor = slope * (diff as f64) + MAX_SCALING_FACTOR;
         let new_threshold = old_threshold * scaling_factor;
         self.next_gc_threshold = 1 + new_threshold as usize;
 

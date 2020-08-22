@@ -1,4 +1,4 @@
-use crate::value::{HeapObj, HeapObjVal, ObjPointer, Value};
+use crate::value::{HeapObj, HeapObjVal, Value};
 
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
@@ -36,7 +36,7 @@ const SHRINK_THRESHOLD: f64 = 0.75; // Shrink if new_size < current_size * shrin
 // All in all, I think I'll need to wait until I have some code to profile. (but since this is a for fun compiler this is just short for "im never going to do this unless i have some spare time and have nothing better to do")
 
 pub struct GC {
-    pub instances: Vec<Box<HeapObj>>,
+    pub instances: Vec<HeapObj>,
 
     allocations: usize,       // The number of live allocations
     next_gc_threshold: usize, // The number of allocations allowed until we GC
@@ -60,7 +60,7 @@ impl GC {
             self.collect_garbage(stack, globals);
         }
 
-        self.instances.push(Box::new(val)); // Either way we need to put on the new instance
+        self.instances.push(val); // Either way we need to put on the new instance
         let index = if self.free_slots.is_empty() {
             self.instances.len() - 1
         } else {
@@ -84,7 +84,7 @@ impl GC {
                 index, self.allocations
             )
         }
-        Value::LoxPointer(ObjPointer { obj: index })
+        Value::LoxPointer(index)
     }
 
     /// Doesn't quite "reclaim" memory, as rather just creating an empty slot where new allocations can go
@@ -99,7 +99,7 @@ impl GC {
             )
         }
 
-        self.instances.push(Box::new(HeapObj::new_placeholder()));
+        self.instances.push(HeapObj::new_placeholder());
         self.instances.swap_remove(index);
         self.free_slots.push(Reverse(index));
         self.allocations -= 1;
@@ -124,7 +124,7 @@ impl GC {
 
     fn mark_value(&mut self, val: &Value) {
         if let Value::LoxPointer(ptr) = val {
-            self.mark_heap_obj(ptr.obj);
+            self.mark_heap_obj(*ptr);
         }
     }
 
@@ -142,6 +142,8 @@ impl GC {
         while !self.grey_worklist.is_empty() {
             let index = self.grey_worklist.pop().unwrap();
             let obj_opt = self.instances.get(index);
+            let mut to_mark = Vec::new();
+
             match obj_opt {
                 Some(obj) => {
                     // Blacken -> Look for LoxPointers that might be stored in these HeapObjs
@@ -150,16 +152,17 @@ impl GC {
                     }
                     match &obj.obj {
                         HeapObjVal::LoxClosure(closure) => {
-                            // Fixme: This really really isn't great for performance
-                            // The borrow checker gets upset because closure is immutable but can be modified by the &mut self call to mark_value
-                            for val in closure.values.clone() {
-                                self.mark_value(&val);
+                            for val in &closure.values {
+                                if let Value::LoxPointer(ptr) = val {
+                                    to_mark.push(*ptr);
+                                }
                             }
                         },
                         HeapObjVal::LoxInstance(instance) => {
-                            // Fixme: Same issue as LoxClosure
-                            for val in instance.fields.clone().values() {
-                                self.mark_value(&val);
+                            for val in instance.fields.values() {
+                                if let Value::LoxPointer(ptr) = val {
+                                    to_mark.push(*ptr);
+                                }
                             }
                         },
                         HeapObjVal::HeapPlaceholder => { panic!("VM panic! Why do we have a valid reference to a heap placeholder value?")},
@@ -167,6 +170,10 @@ impl GC {
                     }
                 }
                 None => panic!("VM panic! Why is there an unallocated pointer?"),
+            }
+
+            for ptr in to_mark.iter() {
+                self.mark_heap_obj(*ptr);
             }
         }
     }

@@ -12,7 +12,7 @@ pub enum Value {
     LoxFunction(usize), // Index of the function in the functions Vec in VM // Fixme: Is this even reachable? Can this be completely removed and the parameter put in OpClosure?
     NativeFunction(NativeFn),
     LoxClass(usize),
-    LoxPointer(ObjPointer),
+    LoxPointer(usize),
     LoxBoundMethod(ObjBoundMethod),
 }
 
@@ -32,7 +32,7 @@ impl Value {
             Value::LoxClass(class) => format!("<class {}>", class),
             Value::LoxPointer(pointer) => format!(
                 "<pointer {}> to {}",
-                pointer.obj,
+                pointer,
                 state.deref(*pointer).to_string(vm)
             ), // Suggestion: Don't reveal to the user the internals?
             Value::LoxBoundMethod(method) => format!(
@@ -57,7 +57,7 @@ impl Value {
     }
 
     /// Hard cast to a ObjPointer. Panics if this value is not a LoxPointer
-    pub fn as_pointer(&self) -> ObjPointer {
+    pub fn as_pointer(&self) -> usize {
         if let Value::LoxPointer(ptr) = self {
             *ptr
         } else {
@@ -85,14 +85,9 @@ pub fn values_equal(t: (Value, Value)) -> bool {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ObjPointer {
-    pub obj: usize,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ObjBoundMethod {
     pub method: usize,       // Index into the functions vec for which function to call
-    pub pointer: ObjPointer, // Pointer to the LoxInstance that this method is bound to
+    pub pointer: usize, // Pointer to the LoxInstance that this method is bound to
 }
 
 // End of stack/implicit copy objects

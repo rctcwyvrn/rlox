@@ -1,4 +1,4 @@
-use crate::value::{HeapObj, HeapObjVal, ObjPointer, Value};
+use crate::value::{HeapObj, HeapObjVal, Value};
 
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
@@ -84,7 +84,7 @@ impl GC {
                 index, self.allocations
             )
         }
-        Value::LoxPointer(ObjPointer { obj: index })
+        Value::LoxPointer(index)
     }
 
     /// Doesn't quite "reclaim" memory, as rather just creating an empty slot where new allocations can go
@@ -124,7 +124,7 @@ impl GC {
 
     fn mark_value(&mut self, val: &Value) {
         if let Value::LoxPointer(ptr) = val {
-            self.mark_heap_obj(ptr.obj);
+            self.mark_heap_obj(*ptr);
         }
     }
 

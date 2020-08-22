@@ -6,7 +6,7 @@ use crate::native::*;
 use crate::resolver::UpValue;
 use crate::value::{
     is_falsey, values_equal, HeapObj, HeapObjType, HeapObjVal, ObjBoundMethod, ObjClosure,
-    ObjInstance, ObjPointer, Value,
+    ObjInstance, Value,
 };
 use crate::InterpretResult;
 
@@ -78,15 +78,15 @@ impl VMState {
     }
 
     // Fixme: Figure out how to not copy paste this code for mut and immut
-    pub fn deref(&self, pointer: ObjPointer) -> &HeapObj {
-        match self.gc.instances.get(pointer.obj) {
+    pub fn deref(&self, pointer: usize) -> &HeapObj {
+        match self.gc.instances.get(pointer) {
             Some(x) => x,
             None => panic!("VM panic! Invalid pointer"),
         }
     }
 
-    fn deref_mut(&mut self, pointer: ObjPointer) -> &mut HeapObj {
-        match self.gc.instances.get_mut(pointer.obj) {
+    fn deref_mut(&mut self, pointer: usize) -> &mut HeapObj {
+        match self.gc.instances.get_mut(pointer) {
             Some(x) => x,
             None => panic!("VM panic! Invalid pointer"),
         }
@@ -129,25 +129,6 @@ impl VMState {
             Err(DerefError::NotPointer)
         }
     }
-
-    // fn frame(&self) -> &CallFrame {
-    //     match self.frames.last() {
-    //         Some(x) => x,
-    //         None => panic!("VM panic! Ran out of call frames?"),
-    //     }
-    // }
-
-    // fn frame_mut(&mut self) -> &mut CallFrame {
-    //     match self.frames.last_mut() {
-    //         Some(x) => x,
-    //         None => panic!("VM panic! Ran out of call frames?"),
-    //     }
-    // }
-
-    /// Returns the index into the stack where the current call frame's relative stack starts
-    // fn frame_start(&self) -> usize {
-    //     self.frame().frame_start
-    // }
 
     fn current_closure(&self) -> &ObjClosure {
         let pointer_val = self.stack.get(self.current_frame.frame_start).unwrap();
@@ -364,11 +345,13 @@ pub struct VM {
 }
 
 impl VM {
-    pub fn new<'a>(mode: ExecutionMode, result: CompilationResult, quiet: bool) -> VM {
+    pub fn new(mode: ExecutionMode, result: CompilationResult, quiet: bool) -> VM {
+        let functions = result.functions;
+
         VM {
             quiet_mode: quiet,
             mode,
-            functions: result.functions,
+            functions,
             classes: result.classes,
             constants: result.constants,
         }
@@ -405,9 +388,8 @@ impl VM {
         }
     }
 
-    fn get_instr(&self, state: &VMState) -> &Instr {
-        let fun = self.functions.get(state.current_frame.function).unwrap();
-        fun.chunk.code.get(state.current_frame.ip).unwrap()
+    fn get_current_code(&self, state: &VMState) -> &Vec<Instr> {
+        &self.functions.get(state.current_frame.function).unwrap().chunk.code
     }
 
     pub fn run(&self) -> InterpretResult {
@@ -417,7 +399,11 @@ impl VM {
         }
 
         let mut state = VMState::new();
-        
+
+        // Makes getting new instructions faster
+        // Update this vec whenever 
+        let mut current_code = &self.get_current_code(&state)[..];
+
         // Move this into a match arm that matches all the binary ops, and then matches on the individual opcodes?
         macro_rules! op_binary {
             ($val_type: path, $oper: tt) => {
@@ -432,9 +418,9 @@ impl VM {
                 }
             }
         }
-    
+
         loop {
-            let instr = self.get_instr(&state);
+            let instr = &current_code[state.current_frame.ip];
             state.increment_ip(); // Preincrement the ip so OpLoops to 0 are possible
 
             if let ExecutionMode::Trace = self.mode {
@@ -452,7 +438,8 @@ impl VM {
                     if state.frames.is_empty() {
                         return InterpretResult::InterpretOK;
                     } else {
-                        state.current_frame = state.frames.pop().unwrap();
+                        state.current_frame = state.frames.pop().unwrap(); // Update the current frame
+                        current_code = &self.get_current_code(&state)[..]; // Update the current code
                         state.push(result); // Push the result back
                     }
                 }
@@ -504,6 +491,7 @@ impl VM {
                     let dest = state.current_frame.frame_start + index;
                     state.stack[dest] = state.peek().clone(); // Same idea as OpSetGlobal, don't pop value since it's an expression
                 }
+
                 OpCode::OpInvoke(index, arg_count) => {
                     let name = self.get_variable_name(index);
                     let pointer_val = state.peek_at(arg_count);
@@ -535,6 +523,7 @@ impl VM {
                         self.runtime_error(error.as_str(), &state);
                         return InterpretResult::InterpretRuntimeError;
                     }
+                    current_code = &self.get_current_code(&state)[..]; // Update the current code
                 }
                 OpCode::OpGetProperty(index) => {
                     let name = self.get_variable_name(index);
@@ -671,6 +660,7 @@ impl VM {
 
                 OpCode::OpCall(arity) => {
                     let result = state.call_value(arity, &self.functions, &self.classes);
+                    current_code = &self.get_current_code(&state)[..]; // Update the current code
                     if let Some(msg) = result {
                         self.runtime_error(&msg[..], &state);
                         return InterpretResult::InterpretRuntimeError;

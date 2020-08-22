@@ -1,1 +1,2 @@
 date,hash,command,mean,stddev,median,user,system,min,max
+0821,22bdce67,target/release/rlox test/benchmark/instantiation.lox,4.3105603630000005,0.051432192149039005,4.287656693,4.284178245,0.007083052500000001,4.269894293,4.427316093

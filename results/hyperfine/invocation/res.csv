@@ -1,1 +1,2 @@
 date,hash,command,mean,stddev,median,user,system,min,max
+0821,22bdce67,target/release/rlox test/benchmark/invocation.lox,3.5281578485000002,0.030079279964158413,3.5220932485,3.5072232249999997,0.00305841,3.4845299485,3.5713981485

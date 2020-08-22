@@ -1,1 +1,2 @@
 date,hash,command,mean,stddev,median,user,system,min,max
+0821,22bdce67,target/release/rlox test/benchmark/fib.lox,7.25422741,0.04322729976197396,7.2356177200000005,7.23229528,0.0029902479999999996,7.20690377,7.32920157

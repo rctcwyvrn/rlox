@@ -650,6 +650,9 @@ impl Compiler<'_> {
             "Expected '{' before function body",
         );
         self.block();
+        
+        let upvalues = self.resolver.pop();
+        self.current_fn().set_upvalues(upvalues);
         self.end_child();
 
         if fun_type != FunctionType::Method && fun_type != FunctionType::Initializer {
@@ -885,8 +888,6 @@ impl Compiler<'_> {
         if (last_instr == None) || last_instr.unwrap().op_code != OpCode::OpReturn {
             self.emit_return();
         }
-        let upvalues = self.resolver.pop();
-        self.current_fn().set_upvalues(upvalues);
         self.current_function = self.parent_functions.pop().unwrap();
     }
 

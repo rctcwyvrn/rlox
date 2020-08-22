@@ -1,1 +1,2 @@
 date,hash,command,mean,stddev,median,user,system,min,max
+0821,22bdce67,target/release/rlox test/benchmark/trees.lox,22.958459860499996,0.2588973323104744,22.922630460500002,22.88459836,0.0540756,22.6359024605,23.5410061605

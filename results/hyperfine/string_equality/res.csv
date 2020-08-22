@@ -1,1 +1,2 @@
 date,hash,command,mean,stddev,median,user,system,min,max
+0821,22bdce67,target/release/rlox test/benchmark/string_equality.lox,1.345820889,0.014380903363063718,1.342068539,1.3260492650000002,0.0009981935,1.329576989,1.369029989

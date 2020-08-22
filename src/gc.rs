@@ -36,7 +36,7 @@ const SHRINK_THRESHOLD: f64 = 0.75; // Shrink if new_size < current_size * shrin
 // All in all, I think I'll need to wait until I have some code to profile. (but since this is a for fun compiler this is just short for "im never going to do this unless i have some spare time and have nothing better to do")
 
 pub struct GC {
-    pub instances: Vec<Box<HeapObj>>,
+    pub instances: Vec<HeapObj>,
 
     allocations: usize,       // The number of live allocations
     next_gc_threshold: usize, // The number of allocations allowed until we GC
@@ -60,7 +60,7 @@ impl GC {
             self.collect_garbage(stack, globals);
         }
 
-        self.instances.push(Box::new(val)); // Either way we need to put on the new instance
+        self.instances.push(val); // Either way we need to put on the new instance
         let index = if self.free_slots.is_empty() {
             self.instances.len() - 1
         } else {
@@ -99,7 +99,7 @@ impl GC {
             )
         }
 
-        self.instances.push(Box::new(HeapObj::new_placeholder()));
+        self.instances.push(HeapObj::new_placeholder());
         self.instances.swap_remove(index);
         self.free_slots.push(Reverse(index));
         self.allocations -= 1;

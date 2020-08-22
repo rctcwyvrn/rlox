@@ -142,6 +142,8 @@ impl GC {
         while !self.grey_worklist.is_empty() {
             let index = self.grey_worklist.pop().unwrap();
             let obj_opt = self.instances.get(index);
+            let mut to_mark = Vec::new();
+
             match obj_opt {
                 Some(obj) => {
                     // Blacken -> Look for LoxPointers that might be stored in these HeapObjs
@@ -150,16 +152,17 @@ impl GC {
                     }
                     match &obj.obj {
                         HeapObjVal::LoxClosure(closure) => {
-                            // Fixme: This really really isn't great for performance
-                            // The borrow checker gets upset because closure is immutable but can be modified by the &mut self call to mark_value
-                            for val in closure.values.clone() {
-                                self.mark_value(&val);
+                            for val in &closure.values {
+                                if let Value::LoxPointer(ptr) = val {
+                                    to_mark.push(*ptr);
+                                }
                             }
                         },
                         HeapObjVal::LoxInstance(instance) => {
-                            // Fixme: Same issue as LoxClosure
-                            for val in instance.fields.clone().values() {
-                                self.mark_value(&val);
+                            for val in instance.fields.values() {
+                                if let Value::LoxPointer(ptr) = val {
+                                    to_mark.push(*ptr);
+                                }
                             }
                         },
                         HeapObjVal::HeapPlaceholder => { panic!("VM panic! Why do we have a valid reference to a heap placeholder value?")},
@@ -167,6 +170,10 @@ impl GC {
                     }
                 }
                 None => panic!("VM panic! Why is there an unallocated pointer?"),
+            }
+
+            for ptr in to_mark.iter() {
+                self.mark_heap_obj(*ptr);
             }
         }
     }

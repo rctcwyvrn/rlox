@@ -40,6 +40,8 @@ struct CallFrame {
 // I think this setup worked quite well, but I'm sure there's a better way to do it
 /// Manages all the state involved with the VM's execution, namely the stack, global variables, the heap, and the call frames
 pub struct VMState {
+    current_frame: CallFrame,
+
     stack: Vec<Value>,
     frames: Vec<CallFrame>,
     globals: HashMap<String, Value>,
@@ -128,27 +130,27 @@ impl VMState {
         }
     }
 
-    fn frame(&self) -> &CallFrame {
-        match self.frames.last() {
-            Some(x) => x,
-            None => panic!("VM panic! Ran out of call frames?"),
-        }
-    }
+    // fn frame(&self) -> &CallFrame {
+    //     match self.frames.last() {
+    //         Some(x) => x,
+    //         None => panic!("VM panic! Ran out of call frames?"),
+    //     }
+    // }
 
-    fn frame_mut(&mut self) -> &mut CallFrame {
-        match self.frames.last_mut() {
-            Some(x) => x,
-            None => panic!("VM panic! Ran out of call frames?"),
-        }
-    }
+    // fn frame_mut(&mut self) -> &mut CallFrame {
+    //     match self.frames.last_mut() {
+    //         Some(x) => x,
+    //         None => panic!("VM panic! Ran out of call frames?"),
+    //     }
+    // }
 
     /// Returns the index into the stack where the current call frame's relative stack starts
-    fn frame_start(&self) -> usize {
-        self.frame().frame_start
-    }
+    // fn frame_start(&self) -> usize {
+    //     self.frame().frame_start
+    // }
 
     fn current_closure(&self) -> &ObjClosure {
-        let pointer_val = self.stack.get(self.frame().frame_start).unwrap();
+        let pointer_val = self.stack.get(self.current_frame.frame_start).unwrap();
         match self.deref_into(pointer_val, HeapObjType::LoxClosure) {
             Ok(closure_obj) => closure_obj.as_closure(),
             Err(x) => panic!("VM panic! Unable to get current closure? {:?}", x),
@@ -156,7 +158,11 @@ impl VMState {
     }
 
     fn current_closure_mut(&mut self) -> &mut ObjClosure {
-        let pointer_val = self.stack.get(self.frame().frame_start).unwrap().clone();
+        let pointer_val = self
+            .stack
+            .get(self.current_frame.frame_start)
+            .unwrap()
+            .clone();
         match self.deref_into_mut(&pointer_val, HeapObjType::LoxClosure) {
             Ok(closure_obj) => closure_obj.as_closure_mut(),
             Err(x) => panic!("VM panic! Unable to get current closure? {:?}", x),
@@ -164,21 +170,21 @@ impl VMState {
     }
 
     fn increment_ip(&mut self) {
-        self.frame_mut().ip += 1;
+        self.current_frame.ip += 1;
     }
 
     fn jump(&mut self, offset: usize) {
-        self.frame_mut().ip += offset - 1;
+        self.current_frame.ip += offset - 1;
     }
 
     fn jump_back(&mut self, neg_offset: usize) {
-        self.frame_mut().ip -= neg_offset + 1;
+        self.current_frame.ip -= neg_offset + 1;
     }
 
     fn capture_upvalue(&self, upvalue: &UpValue) -> Value {
         if upvalue.is_local {
             // Just copy the value from the current stack frame (which is the parents)
-            self.stack[self.frame().frame_start + upvalue.index].clone()
+            self.stack[self.current_frame.frame_start + upvalue.index].clone()
         } else {
             // Look at the current frame's closure's upvalue vec and copy it from there
             let parent_closure = self.current_closure();
@@ -280,12 +286,17 @@ impl VMState {
             return Some(String::from("Stack overflow"));
         }
 
-        let frame = CallFrame {
+        let mut frame = CallFrame {
             name: target_fn.name.clone().unwrap_or(String::from("main")),
             function: fn_index,
             ip: 0,
             frame_start: self.stack.len() - arg_count - 1,
         };
+
+        // Swap on the new call frame for the old one
+        std::mem::swap(&mut self.current_frame, &mut frame);
+
+        // Put the old one onto the stack
         self.frames.push(frame);
         return None;
     }
@@ -325,16 +336,14 @@ impl VMState {
             frame_start: 0,
         };
 
-        let mut frames = Vec::new();
-        frames.push(first_fn);
-
         let first_val = Value::LoxFunction(0);
         let mut stack = Vec::new();
         stack.push(first_val);
 
         let mut state = VMState {
+            current_frame: first_fn,
             stack,
-            frames,
+            frames: Vec::new(),
             globals: HashMap::new(),
             gc: GC::new(),
         };
@@ -371,7 +380,10 @@ impl VM {
         }
 
         eprintln!("{}", msg);
-        for call_frame in state.frames.iter().rev() {
+        for call_frame in [state.current_frame.clone()]
+            .iter()
+            .chain(state.frames.iter().rev())
+        {
             let function = self.functions.get(call_frame.function).unwrap();
             eprint!(
                 "[line {}] in ",
@@ -385,19 +397,17 @@ impl VM {
     }
 
     fn get_variable_name(&self, index: usize) -> String {
-        let name_val = self.constants[index].clone();
-        if let Value::LoxString(var_name) = name_val {
-            return var_name;
+        let name_val = self.constants.get(index);
+        if let Some(Value::LoxString(var_name)) = name_val {
+            return var_name.clone();
         } else {
             panic!("VM panic: Found a non LoxString value for a variable name");
         }
     }
 
-    fn get_instr(&self, state: &VMState) -> Option<&Instr> {
-        let frame = state.frame();
-        let fun = self.functions.get(frame.function)?;
-        let instr = fun.chunk.code.get(frame.ip)?;
-        Some(instr)
+    fn get_instr(&self, state: &VMState) -> &Instr {
+        let fun = self.functions.get(state.current_frame.function).unwrap();
+        fun.chunk.code.get(state.current_frame.ip).unwrap()
     }
 
     pub fn run(&self) -> InterpretResult {
@@ -407,7 +417,7 @@ impl VM {
         }
 
         let mut state = VMState::new();
-
+        
         // Move this into a match arm that matches all the binary ops, and then matches on the individual opcodes?
         macro_rules! op_binary {
             ($val_type: path, $oper: tt) => {
@@ -422,14 +432,9 @@ impl VM {
                 }
             }
         }
-
+    
         loop {
             let instr = self.get_instr(&state);
-            if let None = instr {
-                panic!("VM panic! Unable to get next instruction :c");
-            }
-
-            let instr = instr.unwrap();
             state.increment_ip(); // Preincrement the ip so OpLoops to 0 are possible
 
             if let ExecutionMode::Trace = self.mode {
@@ -439,15 +444,15 @@ impl VM {
             match instr.op_code {
                 OpCode::OpReturn => {
                     let result = state.pop(); // Save the result (the value on the top of the stack)
-                    for _ in 0..(state.stack.len() - state.frame().frame_start) {
+                    for _ in 0..(state.stack.len() - state.current_frame.frame_start) {
                         // Clean up the call frame part of that stack
                         state.pop();
                     }
 
-                    state.frames.pop();
                     if state.frames.is_empty() {
                         return InterpretResult::InterpretOK;
                     } else {
+                        state.current_frame = state.frames.pop().unwrap();
                         state.push(result); // Push the result back
                     }
                 }
@@ -493,10 +498,10 @@ impl VM {
                     }
                 }
                 OpCode::OpGetLocal(index) => {
-                    state.push(state.stack[state.frame_start() + index].clone())
+                    state.push(state.stack[state.current_frame.frame_start + index].clone())
                 } // Note: We gotta clone these values around the stack because our operators pop off the top and we also don't want to modify the variable value
                 OpCode::OpSetLocal(index) => {
-                    let dest = state.frame_start() + index;
+                    let dest = state.current_frame.frame_start + index;
                     state.stack[dest] = state.peek().clone(); // Same idea as OpSetGlobal, don't pop value since it's an expression
                 }
                 OpCode::OpInvoke(index, arg_count) => {
@@ -724,7 +729,7 @@ impl VM {
 }
 
 fn debug_state_trace(state: &VMState) {
-    eprintln!("> Frame: {:?}", state.frame());
+    eprintln!("> Frame: {:?}", state.current_frame);
     eprintln!("> Stack: ");
     for value in state.stack.iter() {
         eprintln!(">> [ {:?} ]", value);
@@ -745,8 +750,8 @@ fn debug_instances(state: &VMState) {
 
 fn debug_trace(vm: &VM, instr: &Instr, state: &VMState) {
     eprintln!("---");
-    eprint!("> Next instr (#{}): ", state.frame().ip - 1);
-    disassemble_instruction(instr, state.frame().ip - 1, &vm.constants);
+    eprint!("> Next instr (#{}): ", state.current_frame.ip - 1);
+    disassemble_instruction(instr, state.current_frame.ip - 1, &vm.constants);
     debug_state_trace(state);
     eprintln!("---\n");
 }

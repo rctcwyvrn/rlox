@@ -170,7 +170,7 @@ impl Compiler<'_> {
     }
 
     /// Emits OpCode::OpJump
-    /// 
+    ///
     /// Returns the index of the jump instruction for patching
     fn emit_jump(&mut self) -> usize {
         self.emit_instr(OpCode::OpJump(usize::max_value()));
@@ -178,7 +178,7 @@ impl Compiler<'_> {
     }
 
     /// Emits OpCode::OpJumpIfFalse
-    /// 
+    ///
     /// Returns the index of the jump instruction for patching
     fn emit_jif(&mut self) -> usize {
         self.emit_instr(OpCode::OpJumpIfFalse(usize::max_value()));
@@ -202,7 +202,10 @@ impl Compiler<'_> {
         match jump_instr.op_code {
             OpCode::OpJump(_) => replace_jump!(OpCode::OpJump),
             OpCode::OpJumpIfFalse(_) => replace_jump!(OpCode::OpJumpIfFalse),
-            _ => panic!("Compiler panic: Attempted to patch a non_jump op code instruction: {:?}", jump_instr),
+            _ => panic!(
+                "Compiler panic: Attempted to patch a non_jump op code instruction: {:?}",
+                jump_instr
+            ),
         }
     }
 

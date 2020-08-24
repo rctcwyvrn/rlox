@@ -1,8 +1,8 @@
 use crate::value::{HeapObj, HeapObjVal, Value};
+use crate::vm::Global;
 
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
-use std::collections::HashMap;
 
 const DEBUG_GC: bool = false;
 const DEBUG_STRESS_GC: bool = false;
@@ -54,8 +54,8 @@ impl GC {
         &mut self,
         val: HeapObj,
         stack: &Vec<Value>,
-        globals: &HashMap<String, Value>,
-    ) -> Value {
+        globals: &Vec<Global>,
+        ) -> Value {
         if DEBUG_STRESS_GC || self.allocations >= self.next_gc_threshold {
             self.collect_garbage(stack, globals);
         }
@@ -128,13 +128,15 @@ impl GC {
         }
     }
 
-    fn mark_roots(&mut self, stack: &Vec<Value>, globals: &HashMap<String, Value>) {
+    fn mark_roots(&mut self, stack: &Vec<Value>, globals: &Vec<Global>) {
         for val in stack.iter() {
             self.mark_value(val);
         }
 
-        for val in globals.values() {
-            self.mark_value(val);
+        for val in globals.iter() {
+            if let Global::Some(v) = val {
+                self.mark_value(v);
+            }
         }
     }
 
@@ -264,7 +266,7 @@ impl GC {
         }
     }
 
-    fn collect_garbage(&mut self, stack: &Vec<Value>, globals: &HashMap<String, Value>) {
+    fn collect_garbage(&mut self, stack: &Vec<Value>, globals: &Vec<Global>) {
         if DEBUG_GC {
             eprintln!("--- gc begin")
         }

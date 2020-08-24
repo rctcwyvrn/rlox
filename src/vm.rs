@@ -10,8 +10,6 @@ use crate::value::{
 };
 use crate::InterpretResult;
 
-use std::collections::HashMap;
-
 const FRAMES_MAX: usize = 64;
 
 #[derive(Debug)]
@@ -34,6 +32,13 @@ struct CallFrame {
     frame_start: usize,
 }
 
+#[derive(Debug, PartialEq)]
+pub enum Global {
+    Some(Value),
+    Uninit,
+    Undef,
+}
+
 // Is it good rust to split these into two very coupled but seperate structs or is there a way to keep them together while not angering the borrow checker?
 //
 // I think this setup worked quite well, but I'm sure there's a better way to do it
@@ -43,7 +48,8 @@ pub struct VMState {
 
     stack: Vec<Value>,
     frames: Vec<CallFrame>,
-    globals: HashMap<String, Value>,
+    //globals: HashMap<String, Value>,
+    globals: Vec<Global>,
     gc: GC,
     // Not implemented due to it destryoing my code => multiple upvalues pointing to the same original value in a function will NOT affect each other. This is a small enough edge case that I'm willing to just let it go
     // upvalues: Vec<Value>,
@@ -289,15 +295,30 @@ impl VMState {
         self.stack.push(result);
     }
 
-    fn define_native(&mut self, name: String, native_fn: NativeFn) {
-        self.globals.insert(name, Value::NativeFunction(native_fn));
+    fn define_native(&mut self, index: usize, native_fn: NativeFn) {
+        self.globals[index] = Global::Some(Value::NativeFunction(native_fn));
     }
 
     /// Defines all native functions
     ///
-    /// Fixme: Make this a config or something?
-    fn define_std_lib(&mut self) {
-        self.define_native(String::from("clock"), clock);
+    /// Searches for references to native functions and adds them in if they're used in the program
+    /// Todo: make the compiler/vm reject using these strings as anything else other than to call global with
+    fn define_std_lib(&mut self, constants: &Vec<Value>) {
+        if let Some(index) = constants.iter().position(|x| x == &Value::LoxString(String::from("clock"))) {
+            self.define_native(index, clock);
+        }
+    }
+
+    fn create_globals(constants: &Vec<Value>) -> Vec<Global>{
+        let mut globals = Vec::new();
+        for constant in constants.iter() {
+            if let Value::LoxString(_s) = constant {
+                globals.push(Global::Uninit);
+            } else {
+                globals.push(Global::Undef);
+            }
+        }
+        globals
     }
 
     /// Initializes the VMState with:
@@ -305,7 +326,7 @@ impl VMState {
     /// - A CallFrame for function #0
     /// - Defined global variables for the native functions
     /// - A Value::LoxFunction for function #0 pushed onto the stack => Satisfies the resolver assumption that the first locals slot is filled with something
-    fn new() -> VMState {
+    fn new(constants: &Vec<Value>) -> VMState {
         let first_fn = CallFrame {
             function: 0,
             ip: 0,
@@ -316,15 +337,16 @@ impl VMState {
         let mut stack = Vec::new();
         stack.push(first_val);
 
+        let globals = VMState::create_globals(constants);
         let mut state = VMState {
             current_frame: first_fn,
             stack,
             frames: Vec::new(),
-            globals: HashMap::new(),
+            globals,
             gc: GC::new(),
         };
 
-        state.define_std_lib();
+        state.define_std_lib(constants);
         return state;
     }
 }
@@ -393,7 +415,7 @@ impl VM {
             debug_print_constants(&self);
         }
 
-        let mut state = VMState::new();
+        let mut state = VMState::new(&self.constants);
 
         // Makes getting new instructions faster
         // Update this vec whenever 
@@ -442,15 +464,19 @@ impl VM {
                     state.pop();
                 }
                 OpCode::OpDefineGlobal(index) => {
-                    let var_name = self.get_variable_name(index).clone();
+                    // let var_name = self.get_variable_name(index).clone();
                     let var_val = state.pop();
-                    state.globals.insert(var_name, var_val);
+                    if let Global::Uninit = state.globals[index]{
+                        state.globals[index] = Global::Some(var_val);
+                    } else {
+                        // INSERT RUNTIME ERROR HERE
+                    }
                 }
                 OpCode::OpCallGlobal(index, arity) => {
-                    let var_name = self.get_variable_name(index);
-                    let var_val = state.globals.get(var_name);
+                    //let var_name = self.get_variable_name(index);
+                    let var_val = &state.globals[index];
                     match var_val {
-                        Some(x) => {
+                        Global::Some(x) => {
                             let new = x.clone();
                             let index = state.stack.len() - arity;
                             state.stack.insert(index, new);
@@ -461,9 +487,9 @@ impl VM {
                                 return InterpretResult::InterpretRuntimeError;
                             }
                         }
-                        None => {
+                        _ => {
                             self.runtime_error(
-                                format!("Undefined variable '{}'", var_name).as_str(),
+                                format!("Undefined variable '{}'", self.get_variable_name(index)).as_str(),
                                 &state,
                             );
                             return InterpretResult::InterpretRuntimeError;
@@ -471,16 +497,15 @@ impl VM {
                     }
                 } 
                 OpCode::OpGetGlobal(index) => {
-                    let var_name = self.get_variable_name(index);
-                    let var_val = state.globals.get(var_name);
+                    let var_val = &state.globals[index];
                     match var_val {
-                        Some(x) => {
+                        Global::Some(x) => {
                             let new = x.clone();
                             state.stack.push(new)
                         }
-                        None => {
+                        _ => {
                             self.runtime_error(
-                                format!("Undefined variable '{}'", var_name).as_str(),
+                                format!("Undefined variable '{}'", self.get_variable_name(index)).as_str(),
                                 &state,
                             );
                             return InterpretResult::InterpretRuntimeError;
@@ -488,19 +513,15 @@ impl VM {
                     }
                 }
                 OpCode::OpSetGlobal(index) => {
-                    let var_name = self.get_variable_name(index);
-
                     // We don't want assignment to pop the value since this is an expression
                     // this will almost always be in a expression statement, which will pop the value
                     let var_val = state.peek().clone();
-                    if !state.globals.contains_key(var_name) {
-                        self.runtime_error(
-                            format!("Undefined variable '{}'", var_name).as_str(),
-                            &state,
-                        );
-                        return InterpretResult::InterpretRuntimeError;
-                    } else {
-                        state.globals.insert(var_name.clone(), var_val);
+                    match state.globals[index] {
+                        Global::Some(_) => state.globals[index] = Global::Some(var_val), // We require it to be initialized (ie defined earlier by OpDefineGlobal)
+                        _ => {
+                            self.runtime_error(format!("Undefined variable '{}'", self.get_variable_name(index)).as_str(), &state);
+                            return InterpretResult::InterpretRuntimeError;
+                        }
                     }
                 }
                 OpCode::OpGetLocal(index) => {
@@ -737,15 +758,17 @@ impl VM {
     }
 }
 
-fn debug_state_trace(state: &VMState) {
+fn debug_state_trace(state: &VMState, vm: &VM) {
     eprintln!("> Frame: {:?}", state.current_frame);
     eprintln!("> Stack: ");
     for value in state.stack.iter() {
         eprintln!(">> [ {:?} ]", value);
     }
     eprintln!("> Globals: ");
-    for (name, val) in state.globals.iter() {
-        eprintln!(">> {} => {:?}", name, val);
+    for (index, val) in state.globals.iter().enumerate() {
+        if let Global::Some(global) = val {
+            eprintln!(">> {} => {:?}", vm.get_variable_name(index), global);
+        }
     }
     debug_instances(state);
 }
@@ -761,7 +784,7 @@ fn debug_trace(vm: &VM, instr: &Instr, state: &VMState) {
     eprintln!("---");
     eprint!("> Next instr (#{}): ", state.current_frame.ip - 1);
     disassemble_instruction(instr, state.current_frame.ip - 1, &vm.constants);
-    debug_state_trace(state);
+    debug_state_trace(state, vm);
     eprintln!("---\n");
 }
 

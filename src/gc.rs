@@ -50,12 +50,7 @@ pub struct GC {
 }
 
 impl GC {
-    pub fn alloc(
-        &mut self,
-        val: HeapObj,
-        stack: &Vec<Value>,
-        globals: &Vec<Global>,
-        ) -> Value {
+    pub fn alloc(&mut self, val: HeapObj, stack: &Vec<Value>, globals: &Vec<Global>) -> Value {
         if DEBUG_STRESS_GC || self.allocations >= self.next_gc_threshold {
             self.collect_garbage(stack, globals);
         }

@@ -381,7 +381,7 @@ impl VM {
 
     /// Should only be used for getting instance properties (methods or fields) and error reporting
     /// For the global instructions, just the index should suffice
-    /// 
+    ///
     /// Local variable names are erased completely by the resolver at compile time
     fn get_variable_name(&self, index: usize) -> &String {
         let name_val = self.identifiers.get(index);
@@ -393,7 +393,12 @@ impl VM {
     }
 
     fn get_current_code(&self, state: &VMState) -> &Vec<Instr> {
-        &self.functions.get(state.current_frame.function).unwrap().chunk.code
+        &self
+            .functions
+            .get(state.current_frame.function)
+            .unwrap()
+            .chunk
+            .code
     }
 
     pub fn run(&self) -> InterpretResult {
@@ -405,7 +410,7 @@ impl VM {
         let mut state = VMState::new(&self.identifiers);
 
         // Makes getting new instructions faster
-        // Update this vec whenever 
+        // Update this vec whenever
         let mut current_code = &self.get_current_code(&state)[..];
 
         // Move this into a match arm that matches all the binary ops, and then matches on the individual opcodes?
@@ -470,13 +475,14 @@ impl VM {
                         }
                         _ => {
                             self.runtime_error(
-                                format!("Undefined variable '{}'", self.get_variable_name(index)).as_str(),
+                                format!("Undefined variable '{}'", self.get_variable_name(index))
+                                    .as_str(),
                                 &state,
                             );
                             return InterpretResult::InterpretRuntimeError;
                         }
                     }
-                } 
+                }
                 OpCode::OpGetGlobal(index) => {
                     let var_val = &state.globals[index];
                     match var_val {
@@ -486,7 +492,8 @@ impl VM {
                         }
                         _ => {
                             self.runtime_error(
-                                format!("Undefined variable '{}'", self.get_variable_name(index)).as_str(),
+                                format!("Undefined variable '{}'", self.get_variable_name(index))
+                                    .as_str(),
                                 &state,
                             );
                             return InterpretResult::InterpretRuntimeError;
@@ -500,14 +507,18 @@ impl VM {
                     match state.globals[index] {
                         Global::Init(_) => state.globals[index] = Global::Init(var_val), // We require it to be initialized (ie defined earlier by OpDefineGlobal)
                         _ => {
-                            self.runtime_error(format!("Undefined variable '{}'", self.get_variable_name(index)).as_str(), &state);
+                            self.runtime_error(
+                                format!("Undefined variable '{}'", self.get_variable_name(index))
+                                    .as_str(),
+                                &state,
+                            );
                             return InterpretResult::InterpretRuntimeError;
                         }
                     }
                 }
-                OpCode::OpGetLocal(index) => {
-                    state.stack.push(state.stack[state.current_frame.frame_start + index].clone())
-                } // Note: We gotta clone these values around the stack because our operators pop off the top and we also don't want to modify the variable value
+                OpCode::OpGetLocal(index) => state
+                    .stack
+                    .push(state.stack[state.current_frame.frame_start + index].clone()), // Note: We gotta clone these values around the stack because our operators pop off the top and we also don't want to modify the variable value
                 OpCode::OpSetLocal(index) => {
                     let dest = state.current_frame.frame_start + index;
                     state.stack[dest] = state.peek().clone(); // Same idea as OpSetGlobal, don't pop value since it's an expression
@@ -629,7 +640,8 @@ impl VM {
                                     pointer: pointer_val.as_pointer(),
                                 };
                                 state.pop(); // Remove the instance
-                                state.stack.push(Value::LoxBoundMethod(bound_value)); // Replace with bound method
+                                state.stack.push(Value::LoxBoundMethod(bound_value));
+                            // Replace with bound method
                             } else {
                                 self.runtime_error(
                                     format!(
@@ -764,7 +776,12 @@ fn debug_instances(state: &VMState) {
 fn debug_trace(vm: &VM, instr: &Instr, state: &VMState) {
     eprintln!("---");
     eprint!("> Next instr (#{}): ", state.current_frame.ip - 1);
-    disassemble_instruction(instr, state.current_frame.ip - 1, &vm.constants, &vm.identifiers);
+    disassemble_instruction(
+        instr,
+        state.current_frame.ip - 1,
+        &vm.constants,
+        &vm.identifiers,
+    );
     debug_state_trace(state, vm);
     eprintln!("---\n");
 }

@@ -6,7 +6,7 @@ pub fn disassemble_class_chunk(
     function_defs: &Vec<FunctionChunk>,
     class_defs: &Vec<ClassChunk>,
     constants: &Vec<Value>,
-    identifiers: &Vec<String>
+    identifiers: &Vec<String>,
 ) {
     match class_chunk.superclass {
         Some(i) => eprintln!(
@@ -21,7 +21,11 @@ pub fn disassemble_class_chunk(
     }
 }
 
-pub fn disassemble_fn_chunk(fn_chunk: &FunctionChunk, constants: &Vec<Value>, identifiers: &Vec<String>) {
+pub fn disassemble_fn_chunk(
+    fn_chunk: &FunctionChunk,
+    constants: &Vec<Value>,
+    identifiers: &Vec<String>,
+) {
     match &fn_chunk.name {
         Some(name) => eprintln!("== <fn {}> ==============", name),
         None => eprintln!("== <script> =============="),
@@ -47,7 +51,12 @@ fn disassemble_chunk(chunk: &Chunk, constants: &Vec<Value>, identifiers: &Vec<St
     eprintln!("======================\n");
 }
 
-pub fn disassemble_instruction(instr: &Instr, instr_offset: usize, constants: &Vec<Value>, identifiers: &Vec<String>) {
+pub fn disassemble_instruction(
+    instr: &Instr,
+    instr_offset: usize,
+    constants: &Vec<Value>,
+    identifiers: &Vec<String>,
+) {
     match instr.op_code {
         OpCode::OpConstant(index) => eprintln!(
             "\t{:?} => {:?}",
@@ -59,9 +68,11 @@ pub fn disassemble_instruction(instr: &Instr, instr_offset: usize, constants: &V
         | OpCode::OpGetGlobal(index)
         | OpCode::OpCallGlobal(index, _)
         | OpCode::OpGetProperty(index)
-        | OpCode::OpSetProperty(index) => {
-                eprintln!("\t{:?} => name: {:?}", instr.op_code, identifiers.get(index).unwrap())
-        }
+        | OpCode::OpSetProperty(index) => eprintln!(
+            "\t{:?} => name: {:?}",
+            instr.op_code,
+            identifiers.get(index).unwrap()
+        ),
         OpCode::OpJump(jump_offset) | OpCode::OpJumpIfFalse(jump_offset) => eprintln!(
             "\t{:?} | jump -> {}",
             instr.op_code,

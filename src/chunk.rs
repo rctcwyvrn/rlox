@@ -11,8 +11,8 @@ pub enum OpCode {
     OpGetGlobal(usize),    // ^
     OpSetGlobal(usize),    // ^
     OpGetSuper(usize),     //  ^
-    OpCallGlobal(usize,usize), // A combination of OpCall and OpGetGlobal
-    
+    OpCallGlobal(usize, usize), // A combination of OpCall and OpGetGlobal
+
     OpGetLocal(usize), // Index on the stack
     OpSetLocal(usize), // ^
 
@@ -20,7 +20,6 @@ pub enum OpCode {
     OpGetProperty(usize), // Index of the String name for this variable name in the identifiers vec corresponding with the property name
     OpSetProperty(usize), // ^
     // Optimization note: Is there any way to resolve properties at compile time? Lox allows arbitrary properties to be added at any time, so I don't believe it's possible
-
     OpGetUpvalue(usize), // upvalue index for a closure
     OpSetUpvalue(usize), // ^
     OpClosure, // Wraps the top value of the stack (must be a LoxFunction) in a LoxClosure, capturing the appropriate UpValues at the same time

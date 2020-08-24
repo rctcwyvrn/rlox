@@ -666,7 +666,7 @@ impl Compiler<'_> {
             "Expected '{' before function body",
         );
         self.block();
-        
+
         let upvalues = self.resolver.pop();
         let has_upvalues = !upvalues.is_empty();
         if !upvalues.is_empty() {
@@ -972,7 +972,7 @@ impl Compiler<'_> {
                     &self.functions,
                     &self.classes,
                     &self.constants,
-                    &self.identifier_constants
+                    &self.identifier_constants,
                 );
             }
         }

@@ -86,7 +86,7 @@ pub fn values_equal(t: (&Value, &Value)) -> bool {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ObjBoundMethod {
-    pub method: usize,       // Index into the functions vec for which function to call
+    pub method: usize,  // Index into the functions vec for which function to call
     pub pointer: usize, // Pointer to the LoxInstance that this method is bound to
 }
 

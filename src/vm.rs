@@ -29,7 +29,6 @@ pub enum DerefError {
 
 #[derive(Debug, Clone)]
 struct CallFrame {
-    name: String,
     function: usize, // Index into the VM.functions Vec for which function is being called
     ip: usize,
     frame_start: usize,
@@ -271,7 +270,6 @@ impl VMState {
         }
 
         let mut frame = CallFrame {
-            name: target_fn.name.clone().unwrap_or(String::from("main")),
             function: fn_index,
             ip: 0,
             frame_start: self.stack.len() - arg_count - 1,
@@ -314,7 +312,6 @@ impl VMState {
     /// - A Value::LoxFunction for function #0 pushed onto the stack => Satisfies the resolver assumption that the first locals slot is filled with something
     fn new() -> VMState {
         let first_fn = CallFrame {
-            name: String::from("main"),
             function: 0,
             ip: 0,
             frame_start: 0,

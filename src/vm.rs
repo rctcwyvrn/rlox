@@ -374,10 +374,10 @@ impl VM {
         }
     }
 
-    fn get_variable_name(&self, index: usize) -> String {
+    fn get_variable_name(&self, index: usize) -> &String {
         let name_val = self.constants.get(index);
         if let Some(Value::LoxString(var_name)) = name_val {
-            return var_name.clone();
+            return var_name;
         } else {
             panic!("VM panic: Found a non LoxString value for a variable name");
         }
@@ -442,13 +442,13 @@ impl VM {
                     state.pop();
                 }
                 OpCode::OpDefineGlobal(index) => {
-                    let var_name = self.get_variable_name(index);
+                    let var_name = self.get_variable_name(index).clone();
                     let var_val = state.pop();
                     state.globals.insert(var_name, var_val);
                 }
                 OpCode::OpCallGlobal(index, arity) => {
                     let var_name = self.get_variable_name(index);
-                    let var_val = state.globals.get(&var_name);
+                    let var_val = state.globals.get(var_name);
                     match var_val {
                         Some(x) => {
                             let new = x.clone();
@@ -472,7 +472,7 @@ impl VM {
                 } 
                 OpCode::OpGetGlobal(index) => {
                     let var_name = self.get_variable_name(index);
-                    let var_val = state.globals.get(&var_name);
+                    let var_val = state.globals.get(var_name);
                     match var_val {
                         Some(x) => {
                             let new = x.clone();
@@ -493,14 +493,14 @@ impl VM {
                     // We don't want assignment to pop the value since this is an expression
                     // this will almost always be in a expression statement, which will pop the value
                     let var_val = state.peek().clone();
-                    if !state.globals.contains_key(&var_name) {
+                    if !state.globals.contains_key(var_name) {
                         self.runtime_error(
                             format!("Undefined variable '{}'", var_name).as_str(),
                             &state,
                         );
                         return InterpretResult::InterpretRuntimeError;
                     } else {
-                        state.globals.insert(var_name, var_val);
+                        state.globals.insert(var_name.clone(), var_val);
                     }
                 }
                 OpCode::OpGetLocal(index) => {
@@ -519,17 +519,17 @@ impl VM {
                         Ok(instance) => {
                             let instance = instance.as_instance();
                             let class_def = &self.classes[instance.class];
-                            if instance.fields.contains_key(&name) {
+                            if instance.fields.contains_key(name) {
                                 // Guard against the weird edge case where instance.thing() is actually calling a closure instance.thing, not a method invocation
-                                let value = instance.fields.get(&name).unwrap().clone();
+                                let value = instance.fields.get(name).unwrap().clone();
                                 let index = state.stack.len() - 1 - arg_count;
                                 state.stack[index] = value; // Remove the instance and replace with the value
                                 state.call_value(arg_count, &self.functions, &self.classes)
                             // Perform the call
-                            } else if class_def.methods.contains_key(&name) {
+                            } else if class_def.methods.contains_key(name) {
                                 // We know that the top of the stack is LoxPointer | arg1 | arg2
                                 // So we can go ahead and call
-                                let fn_index = class_def.methods.get(&name).unwrap();
+                                let fn_index = class_def.methods.get(name).unwrap();
                                 state.call(*fn_index, arg_count, &self.functions)
                             } else {
                                 Some(format!("Undefined property '{}' in {:?}", name, instance))
@@ -552,16 +552,16 @@ impl VM {
                     match state.deref_into(pointer_val, HeapObjType::LoxInstance) {
                         Ok(instance) => {
                             let instance = instance.as_instance();
-                            if instance.fields.contains_key(&name) {
+                            if instance.fields.contains_key(name) {
                                 // See if we tried to get a field
-                                let value = instance.fields.get(&name).unwrap().clone();
+                                let value = instance.fields.get(name).unwrap().clone();
                                 state.pop(); // Remove the instance
                                 state.stack.push(value); // Replace with the value
                             } else {
                                 let class_chunk = &self.classes[instance.class]; // if not a field, then we must be getting a function. Create a LoxBoundMethod for it
-                                if class_chunk.methods.contains_key(&name) {
+                                if class_chunk.methods.contains_key(name) {
                                     let bound_value = ObjBoundMethod {
-                                        method: *class_chunk.methods.get(&name).unwrap(),
+                                        method: *class_chunk.methods.get(name).unwrap(),
                                         pointer: pointer_val.as_pointer(),
                                     };
                                     state.pop(); // Remove the instance
@@ -593,7 +593,7 @@ impl VM {
                     match state.deref_into_mut(&pointer_val, HeapObjType::LoxInstance) {
                         Ok(instance) => {
                             let instance = instance.as_instance_mut();
-                            instance.fields.insert(name, val.clone());
+                            instance.fields.insert(name.clone(), val.clone());
                         }
                         Err(_) => {
                             let msg = format!("Only class instances can access properties with '.' Found {} instead", pointer_val.to_string(&self, &state));
@@ -621,9 +621,9 @@ impl VM {
                                 // Note: I think the compiiler can catch this
                             }
                             let superclass_chunk = &self.classes[class_chunk.superclass.unwrap()];
-                            if superclass_chunk.methods.contains_key(&name) {
+                            if superclass_chunk.methods.contains_key(name) {
                                 let bound_value = ObjBoundMethod {
-                                    method: *superclass_chunk.methods.get(&name).unwrap(),
+                                    method: *superclass_chunk.methods.get(name).unwrap(),
                                     pointer: pointer_val.as_pointer(),
                                 };
                                 state.pop(); // Remove the instance

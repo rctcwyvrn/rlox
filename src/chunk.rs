@@ -111,6 +111,7 @@ pub struct ClassChunk {
     pub name: String,
     pub methods: HashMap<String, usize>,
     pub superclass: Option<usize>,
+    pub has_init: bool,
 }
 
 impl ClassChunk {
@@ -119,6 +120,7 @@ impl ClassChunk {
             name,
             methods: HashMap::new(),
             superclass: None,
+            has_init: false,
         }
     }
 }

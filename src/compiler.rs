@@ -345,6 +345,10 @@ impl Compiler<'_> {
                     for (name, fn_index) in superclass.methods.clone().iter() {
                         self.current_class().methods.insert(name.clone(), *fn_index);
                         // Inherit all the methods by just copying in all the fn_indices, nicely handles multiple levels of inheritence
+
+                        if name.as_str().eq("init") {
+                            self.current_class().has_init = true;
+                        }
                     }
                     self.current_class().superclass = superclass_index;
                 }
@@ -600,7 +604,8 @@ impl Compiler<'_> {
         self.consume(TokenType::TokenIdentifier, "Expected method name");
         let name = self.previous().lexemme.clone();
 
-        let index = if name.eq(&String::from("init")) {
+        let index = if name.eq("init") {
+            self.current_class().has_init = true;
             self.function(FunctionType::Initializer)
         } else {
             self.function(FunctionType::Method)

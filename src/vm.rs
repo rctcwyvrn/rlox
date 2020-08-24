@@ -223,10 +223,9 @@ impl VMState {
             // If the LoxClass was called with arguments the stack will look like this: LoxClass | arg1 | arg2
             // So we want to call with the stack as: LoxPointer => LoxInstance | arg1 | arg2
             // And we need the init() fn to return the LoxInstance
-            let init = &String::from("init");
-            if class_def.methods.contains_key(init) {
+            if class_def.has_init {
                 self.call(
-                    *class_def.methods.get(init).unwrap(),
+                    *class_def.methods.get("init").unwrap(),
                     arg_count,
                     function_defs,
                 )

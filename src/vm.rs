@@ -454,6 +454,30 @@ impl VM {
                     let var_val = state.pop();
                     state.globals.insert(var_name, var_val);
                 }
+                OpCode::OpCallGlobal(index, arity) => {
+                    let var_name = self.get_variable_name(index);
+                    let var_val = state.globals.get(&var_name);
+                    match var_val {
+                        Some(x) => {
+                            let new = x.clone();
+                            let index = state.stack.len() - arity;
+                            state.stack.insert(index, new);
+                            let result = state.call_value(arity, &self.functions, &self.classes);
+                            current_code = &self.get_current_code(&state)[..]; // Update the current code
+                            if let Some(msg) = result {
+                                self.runtime_error(&msg[..], &state);
+                                return InterpretResult::InterpretRuntimeError;
+                            }
+                        }
+                        None => {
+                            self.runtime_error(
+                                format!("Undefined variable '{}'", var_name).as_str(),
+                                &state,
+                            );
+                            return InterpretResult::InterpretRuntimeError;
+                        }
+                    }
+                } 
                 OpCode::OpGetGlobal(index) => {
                     let var_name = self.get_variable_name(index);
                     let var_val = state.globals.get(&var_name);

@@ -56,6 +56,7 @@ pub fn disassemble_instruction(instr: &Instr, instr_offset: usize, constants: &V
         OpCode::OpDefineGlobal(index)
         | OpCode::OpSetGlobal(index)
         | OpCode::OpGetGlobal(index)
+        | OpCode::OpCallGlobal(index, _)
         | OpCode::OpGetProperty(index)
         | OpCode::OpSetProperty(index) => {
             if let Value::LoxString(name) = constants.get(index).unwrap() {

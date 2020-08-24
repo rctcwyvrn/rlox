@@ -773,10 +773,19 @@ impl Compiler<'_> {
             )
         } else {
             let global_arg = self.identifier_constant(name); // Does NOT check at compile time if this variable can be resolved
-            (
-                OpCode::OpGetGlobal(global_arg),
-                OpCode::OpSetGlobal(global_arg),
-            )
+
+            if self.match_cur(TokenType::TokenLeftParen) {
+                let arg_count = self.argument_list();
+                (
+                    OpCode::OpCallGlobal(global_arg, arg_count),
+                    OpCode::OpSetGlobal(global_arg),
+                )
+            } else {
+                (
+                    OpCode::OpGetGlobal(global_arg),
+                    OpCode::OpSetGlobal(global_arg),
+                )
+            }
         };
 
         // Figure out if we want to use the get or the set from the pair of possible ops we determined earlier

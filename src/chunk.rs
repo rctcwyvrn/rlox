@@ -11,7 +11,7 @@ pub enum OpCode {
     OpGetGlobal(usize),    // ^
     OpSetGlobal(usize),    // ^
     OpGetSuper(usize),     //  ^
-
+    OpCallGlobal(usize,usize), // A combination of OpCall and OpGetGlobal
     OpGetLocal(usize), // Index on the stack
     OpSetLocal(usize), // ^
 

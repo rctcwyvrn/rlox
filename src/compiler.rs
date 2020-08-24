@@ -655,13 +655,20 @@ impl Compiler<'_> {
         self.block();
         
         let upvalues = self.resolver.pop();
-        self.current_fn().set_upvalues(upvalues);
+        let has_upvalues = !upvalues.is_empty();
+        if !upvalues.is_empty() {
+            self.current_fn().set_upvalues(upvalues); // Gotta set this before end_child() switches what the current_fn is
+        }
+
         self.end_child();
 
         if fun_type != FunctionType::Method && fun_type != FunctionType::Initializer {
             // We don't need this for methods because they are statically loaded into the ClassChunk, not at runtime on the stack
             self.emit_constant(Value::LoxFunction(index));
-            self.emit_instr(OpCode::OpClosure);
+
+            if has_upvalues {
+                self.emit_instr(OpCode::OpClosure);
+            }
         }
 
         index

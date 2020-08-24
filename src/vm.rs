@@ -209,6 +209,9 @@ impl VMState {
                 }
                 Err(_) => Some(String::from("Can only call functions and classes")),
             }
+        } else if let Value::LoxFunction(fn_index) = callee {
+            let index = *fn_index;
+            self.call(index, arg_count, function_defs)
         } else if let Value::LoxBoundMethod(method) = callee {
             let fn_index = method.method;
             let index = self.stack.len() - arg_count - 1; // Index to put the LoxPointer to represent the "this" variable

@@ -7,18 +7,20 @@ pub enum OpCode {
     OpReturn,
     OpPop,
 
-    OpDefineGlobal(usize), // Index of the LoxString name for this variable name in the constants vec
+    OpDefineGlobal(usize), // Index of the String name for this variable name in the identifiers vec
     OpGetGlobal(usize),    // ^
     OpSetGlobal(usize),    // ^
     OpGetSuper(usize),     //  ^
     OpCallGlobal(usize,usize), // A combination of OpCall and OpGetGlobal
+    
     OpGetLocal(usize), // Index on the stack
     OpSetLocal(usize), // ^
 
     OpInvoke(usize, usize), // Combines a GetProperty and a Call. Contains the exact same information. First usize is the index for the property name, second is for the arity
-    OpGetProperty(usize), // Index of the LoxString variable in the constants vec corresponding with the property name
+    OpGetProperty(usize), // Index of the String name for this variable name in the identifiers vec corresponding with the property name
     OpSetProperty(usize), // ^
-    // Optimization todo: Fix this LoxString storing in the constants vec. Either only save one, or get rid of it entierly by resolving the globals/instance slot at compilation
+    // Optimization note: Is there any way to resolve properties at compile time? Lox allows arbitrary properties to be added at any time, so I don't believe it's possible
+
     OpGetUpvalue(usize), // upvalue index for a closure
     OpSetUpvalue(usize), // ^
     OpClosure, // Wraps the top value of the stack (must be a LoxFunction) in a LoxClosure, capturing the appropriate UpValues at the same time

@@ -11,6 +11,7 @@ pub struct Compiler<'a> {
     tokens: Vec<Token>,
 
     constants: Vec<Value>,
+    identifier_constants: Vec<String>,
 
     classes: Vec<ClassChunk>,
     current_class: Option<usize>,
@@ -404,7 +405,14 @@ impl Compiler<'_> {
     ///
     /// Only used for global variables
     fn identifier_constant(&mut self, str_val: &String) -> usize {
-        self.add_constant(Value::LoxString(str_val.to_string()))
+        // self.add_constant(Value::LoxString(str_val.to_string()))
+        match self.identifier_constants.iter().position(|x| x == str_val) {
+            Some(i) => i,
+            None => {
+                self.identifier_constants.push(str_val.to_string());
+                self.identifier_constants.len() - 1
+            }
+        }
     }
 
     /// Emits the instruction to define the global variable
@@ -580,7 +588,7 @@ impl Compiler<'_> {
         self.variable(false);
     }
 
-    /// Consumes super.method_name and emits uhhhh
+    /// Consumes super.method_name and emits an OpGetSuper(index of the "method_name" identifier)
     fn super_(&mut self) {
         if self.current_class == None {
             self.error("Cannot use keyword 'super' outside of a class");
@@ -928,6 +936,8 @@ impl Compiler<'_> {
             scanner,
             tokens,
             constants: Vec::new(),
+            identifier_constants: Vec::new(),
+
             classes: Vec::new(),
             current_class: None,
             functions,
@@ -952,7 +962,7 @@ impl Compiler<'_> {
                 if fn_chunk.fn_type != FunctionType::Method
                     && fn_chunk.fn_type != FunctionType::Initializer
                 {
-                    disassemble_fn_chunk(&fn_chunk, &self.constants);
+                    disassemble_fn_chunk(&fn_chunk, &self.constants, &self.identifier_constants);
                 }
             }
 
@@ -962,6 +972,7 @@ impl Compiler<'_> {
                     &self.functions,
                     &self.classes,
                     &self.constants,
+                    &self.identifier_constants
                 );
             }
         }
@@ -971,6 +982,7 @@ impl Compiler<'_> {
                 classes: self.classes,
                 functions: self.functions,
                 constants: self.constants,
+                identifier_constants: self.identifier_constants,
             })
         } else {
             None
@@ -982,4 +994,5 @@ pub struct CompilationResult {
     pub classes: Vec<ClassChunk>,
     pub functions: Vec<FunctionChunk>,
     pub constants: Vec<Value>,
+    pub identifier_constants: Vec<String>,
 }

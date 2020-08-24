@@ -134,7 +134,7 @@ impl GC {
         }
 
         for val in globals.iter() {
-            if let Global::Some(v) = val {
+            if let Global::Init(v) = val {
                 self.mark_value(v);
             }
         }

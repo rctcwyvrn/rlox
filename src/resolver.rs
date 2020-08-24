@@ -89,7 +89,7 @@ impl Resolver {
             FunctionType::Method | FunctionType::Initializer => Local {
                 name: String::from("this"),
                 depth: Some(1),
-            }, // Fill the first slot with a magically initialized "this"
+            }, // Fill the first slot with a magically initialized "this" which will contain the LoxPointer to itself
             _ => Local {
                 name: String::from(""),
                 depth: None,

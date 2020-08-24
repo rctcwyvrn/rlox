@@ -6,6 +6,7 @@ pub fn disassemble_class_chunk(
     function_defs: &Vec<FunctionChunk>,
     class_defs: &Vec<ClassChunk>,
     constants: &Vec<Value>,
+    identifiers: &Vec<String>
 ) {
     match class_chunk.superclass {
         Some(i) => eprintln!(
@@ -16,19 +17,19 @@ pub fn disassemble_class_chunk(
     }
     for (name, fn_index) in class_chunk.methods.iter() {
         eprintln!("== <method {}> ============", name);
-        disassemble_chunk(&function_defs[*fn_index].chunk, constants);
+        disassemble_chunk(&function_defs[*fn_index].chunk, constants, identifiers);
     }
 }
 
-pub fn disassemble_fn_chunk(fn_chunk: &FunctionChunk, constants: &Vec<Value>) {
+pub fn disassemble_fn_chunk(fn_chunk: &FunctionChunk, constants: &Vec<Value>, identifiers: &Vec<String>) {
     match &fn_chunk.name {
         Some(name) => eprintln!("== <fn {}> ==============", name),
         None => eprintln!("== <script> =============="),
     }
-    disassemble_chunk(&fn_chunk.chunk, constants);
+    disassemble_chunk(&fn_chunk.chunk, constants, identifiers);
 }
 
-fn disassemble_chunk(chunk: &Chunk, constants: &Vec<Value>) {
+fn disassemble_chunk(chunk: &Chunk, constants: &Vec<Value>, identifiers: &Vec<String>) {
     eprintln!("---");
     eprintln!("byte\tline\tOpCode");
     let mut last_line_num = 0;
@@ -40,13 +41,13 @@ fn disassemble_chunk(chunk: &Chunk, constants: &Vec<Value>) {
         };
         last_line_num = instr.line_num;
         eprint!("{}\t{}", i, line_marker);
-        disassemble_instruction(instr, i, constants)
+        disassemble_instruction(instr, i, constants, identifiers)
     }
 
     eprintln!("======================\n");
 }
 
-pub fn disassemble_instruction(instr: &Instr, instr_offset: usize, constants: &Vec<Value>) {
+pub fn disassemble_instruction(instr: &Instr, instr_offset: usize, constants: &Vec<Value>, identifiers: &Vec<String>) {
     match instr.op_code {
         OpCode::OpConstant(index) => eprintln!(
             "\t{:?} => {:?}",
@@ -59,9 +60,7 @@ pub fn disassemble_instruction(instr: &Instr, instr_offset: usize, constants: &V
         | OpCode::OpCallGlobal(index, _)
         | OpCode::OpGetProperty(index)
         | OpCode::OpSetProperty(index) => {
-            if let Value::LoxString(name) = constants.get(index).unwrap() {
-                eprintln!("\t{:?} => name: {:?}", instr.op_code, name)
-            }
+                eprintln!("\t{:?} => name: {:?}", instr.op_code, identifiers.get(index).unwrap())
         }
         OpCode::OpJump(jump_offset) | OpCode::OpJumpIfFalse(jump_offset) => eprintln!(
             "\t{:?} | jump -> {}",

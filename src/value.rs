@@ -73,12 +73,12 @@ pub fn is_falsey(val: &Value) -> bool {
     matches!(val, Value::Bool(false) | Value::Nil)
 }
 
-pub fn values_equal(t: (Value, Value)) -> bool {
+pub fn values_equal(t: (&Value, &Value)) -> bool {
     match t {
         (Value::Double(x), Value::Double(y)) => x == y,
         (Value::Bool(x), Value::Bool(y)) => x == y,
         (Value::Nil, _) => true,
-        (Value::LoxString(x), Value::LoxString(y)) => x.eq(&y),
+        (Value::LoxString(x), Value::LoxString(y)) => x.eq(y),
         (Value::LoxPointer(x), Value::LoxPointer(y)) => x == y,
         _ => false,
     }

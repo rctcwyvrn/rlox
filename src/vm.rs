@@ -711,7 +711,7 @@ impl VM {
                 OpCode::OpGreater => op_binary!(Value::Bool, >),
                 OpCode::OpLess => op_binary!(Value::Bool, <),
                 OpCode::OpEqual => {
-                    let t = (state.pop(), state.pop());
+                    let t = (&state.pop(), &state.pop());
                     state.stack.push(Value::Bool(values_equal(t)));
                 }
 

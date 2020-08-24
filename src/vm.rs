@@ -50,10 +50,6 @@ pub struct VMState {
 }
 
 impl VMState {
-    fn push(&mut self, val: Value) {
-        self.stack.push(val)
-    }
-
     fn pop(&mut self) -> Value {
         match self.stack.pop() {
             Some(x) => x,
@@ -176,7 +172,7 @@ impl VMState {
     fn push_upvalue(&mut self, index: usize) {
         let closure = self.current_closure();
         let val = closure.values.get(index).unwrap().clone();
-        self.push(val);
+        self.stack.push(val);
     }
 
     /// Set an upvalue with the top value of the stack
@@ -291,7 +287,7 @@ impl VMState {
         }
         self.pop(); // Pop off the Value::NativeFunction
         let result = native_fn(arg_count, args);
-        self.push(result);
+        self.stack.push(result);
     }
 
     fn define_native(&mut self, name: String, native_fn: NativeFn) {
@@ -410,7 +406,7 @@ impl VM {
                 {
                     //if let ($val_type(a), $val_type(b)) = (self.pop(), self.pop()) {
                     if let (Value::Double(a), Value::Double(b)) = (state.pop(), state.pop()) {
-                        state.push($val_type(b $oper a))
+                        state.stack.push($val_type(b $oper a))
                     } else {
                         self.runtime_error("Operands must be numbers", &state);
                         return InterpretResult::InterpretRuntimeError;
@@ -440,7 +436,7 @@ impl VM {
                     } else {
                         state.current_frame = state.frames.pop().unwrap(); // Update the current frame
                         current_code = &self.get_current_code(&state)[..]; // Update the current code
-                        state.push(result); // Push the result back
+                        state.stack.push(result); // Push the result back
                     }
                 }
                 OpCode::OpPop => {
@@ -481,7 +477,7 @@ impl VM {
                     match var_val {
                         Some(x) => {
                             let new = x.clone();
-                            state.push(new)
+                            state.stack.push(new)
                         }
                         None => {
                             self.runtime_error(
@@ -509,7 +505,7 @@ impl VM {
                     }
                 }
                 OpCode::OpGetLocal(index) => {
-                    state.push(state.stack[state.current_frame.frame_start + index].clone())
+                    state.stack.push(state.stack[state.current_frame.frame_start + index].clone())
                 } // Note: We gotta clone these values around the stack because our operators pop off the top and we also don't want to modify the variable value
                 OpCode::OpSetLocal(index) => {
                     let dest = state.current_frame.frame_start + index;
@@ -561,7 +557,7 @@ impl VM {
                                 // See if we tried to get a field
                                 let value = instance.fields.get(&name).unwrap().clone();
                                 state.pop(); // Remove the instance
-                                state.push(value); // Replace with the value
+                                state.stack.push(value); // Replace with the value
                             } else {
                                 let class_chunk = &self.classes[instance.class]; // if not a field, then we must be getting a function. Create a LoxBoundMethod for it
                                 if class_chunk.methods.contains_key(&name) {
@@ -570,7 +566,7 @@ impl VM {
                                         pointer: pointer_val.as_pointer(),
                                     };
                                     state.pop(); // Remove the instance
-                                    state.push(Value::LoxBoundMethod(bound_value));
+                                    state.stack.push(Value::LoxBoundMethod(bound_value));
                                 // Replace with bound method
                                 } else {
                                     self.runtime_error(
@@ -609,7 +605,7 @@ impl VM {
 
                     // We return on an error, so we can clean up the stack now
                     state.pop(); // Instance
-                    state.push(val); // Return the value to the stack
+                    state.stack.push(val); // Return the value to the stack
                 }
                 // This is almost identical to OpGetProperty, but it goes one extra jump to get the method from the superclass, and binds it to itself
                 OpCode::OpGetSuper(index) => {
@@ -632,7 +628,7 @@ impl VM {
                                     pointer: pointer_val.as_pointer(),
                                 };
                                 state.pop(); // Remove the instance
-                                state.push(Value::LoxBoundMethod(bound_value)); // Replace with bound method
+                                state.stack.push(Value::LoxBoundMethod(bound_value)); // Replace with bound method
                             } else {
                                 self.runtime_error(
                                     format!(
@@ -667,7 +663,7 @@ impl VM {
                             closure.values.push(state.capture_upvalue(upvalue))
                         }
                         let ptr = state.alloc(HeapObj::new_closure(closure));
-                        state.push(ptr);
+                        state.stack.push(ptr);
                     } else {
                         panic!("VM panic! Attempted to wrap a non-function value in a closure");
                     }
@@ -691,19 +687,19 @@ impl VM {
                     }
                 }
 
-                OpCode::OpClass(index) => state.push(Value::LoxClass(index)),
+                OpCode::OpClass(index) => state.stack.push(Value::LoxClass(index)),
 
-                OpCode::OpConstant(index) => state.push(self.constants[index].clone()), // FIXME
-                OpCode::OpTrue => state.push(Value::Bool(true)),
-                OpCode::OpFalse => state.push(Value::Bool(false)),
-                OpCode::OpNil => state.push(Value::Nil),
+                OpCode::OpConstant(index) => state.stack.push(self.constants[index].clone()), // FIXME
+                OpCode::OpTrue => state.stack.push(Value::Bool(true)),
+                OpCode::OpFalse => state.stack.push(Value::Bool(false)),
+                OpCode::OpNil => state.stack.push(Value::Nil),
 
                 OpCode::OpAdd => {
                     let t = (state.pop(), state.pop());
                     if let (Value::LoxString(a), Value::LoxString(b)) = t {
-                        state.push(Value::LoxString(format!("{}{}", b, a)))
+                        state.stack.push(Value::LoxString(format!("{}{}", b, a)))
                     } else if let (Value::Double(a), Value::Double(b)) = t {
-                        state.push(Value::Double(a + b))
+                        state.stack.push(Value::Double(a + b))
                     } else {
                         self.runtime_error("Operands must be two numbers or two strings", &state);
                         return InterpretResult::InterpretRuntimeError;
@@ -716,17 +712,17 @@ impl VM {
                 OpCode::OpLess => op_binary!(Value::Bool, <),
                 OpCode::OpEqual => {
                     let t = (state.pop(), state.pop());
-                    state.push(Value::Bool(values_equal(t)));
+                    state.stack.push(Value::Bool(values_equal(t)));
                 }
 
                 OpCode::OpNot => {
                     let val = Value::Bool(is_falsey(&state.pop()));
-                    state.push(val);
+                    state.stack.push(val);
                 }
                 OpCode::OpNegate => {
                     let value = state.pop().as_num();
                     match value {
-                        Some(x) => state.push(Value::Double(x * -1.0)),
+                        Some(x) => state.stack.push(Value::Double(x * -1.0)),
                         None => {
                             self.runtime_error("Attempted to negate a non-number value", &state);
                             return InterpretResult::InterpretRuntimeError;

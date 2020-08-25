@@ -386,7 +386,7 @@ impl VM {
     }
 
     /// Should only be used for getting debugging and error reporting
-    /// 
+    ///
     /// * For the global instructions, just the index should suffice
     /// * For instance properties and fields, the hashmaps are keyed on the usize corresponding to the identifier string
     /// * Local variable names are erased completely by the resolver at compile time
@@ -725,7 +725,7 @@ impl VM {
 
                 OpCode::OpClass(index) => state.stack.push(Value::LoxClass(index)),
 
-                OpCode::OpConstant(index) => state.stack.push(self.constants[index].clone()), // FIXME
+                OpCode::OpConstant(index) => state.stack.push(self.constants[index].clone()),
                 OpCode::OpTrue => state.stack.push(Value::Bool(true)),
                 OpCode::OpFalse => state.stack.push(Value::Bool(false)),
                 OpCode::OpNil => state.stack.push(Value::Nil),

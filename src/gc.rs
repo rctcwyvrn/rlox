@@ -82,24 +82,6 @@ impl GC {
         Value::LoxPointer(index)
     }
 
-    /// Doesn't quite "reclaim" memory, as rather just creating an empty slot where new allocations can go
-    /// I don't think I can properly reclaim the memory unless I do some unsafe uninitialized memory stuff
-    fn free(&mut self, index: usize) {
-        if DEBUG_GC {
-            eprintln!(
-                "freed slot {} | # of allocations = {} | value to free = {:?}",
-                index,
-                self.allocations,
-                self.instances.get(index)
-            )
-        }
-
-        self.instances.push(HeapObj::new_placeholder());
-        self.instances.swap_remove(index);
-        self.free_slots.push(Reverse(index));
-        self.allocations -= 1;
-    }
-
     fn mark_heap_obj(&mut self, index: usize) {
         let obj_opt = self.instances.get_mut(index);
         match obj_opt {
@@ -176,28 +158,37 @@ impl GC {
     }
 
     fn sweep(&mut self) -> Option<usize> {
-        let mut to_free = Vec::new();
         let mut shrinkable_to: Option<usize> = None;
 
-        for (i, obj) in self.instances.iter_mut().enumerate() {
+        for (index, obj) in self.instances.iter_mut().enumerate() {
             if obj.obj == HeapObjVal::HeapPlaceholder {
                 match shrinkable_to {
                     Some(_) => {}
-                    None => shrinkable_to = Some(i),
+                    None => shrinkable_to = Some(index),
                 }
             } else {
+                // Since we hit a non-placeholder, we obviously can't shrink to less than the current index, so reset it to None
                 shrinkable_to = None;
+
+                // Now check if we need to free this obj
                 if !obj.is_marked {
-                    to_free.push(i);
+                    if DEBUG_GC {
+                        eprintln!(
+                            "freed slot {} | # of allocations = {} | value to free = {:?}",
+                            index, self.allocations, obj,
+                        )
+                    }
+
+                    let mut placeholder = HeapObj::new_placeholder(); // Create a new placeholder to swap with the obj, which will get dropped at the end of this block
+                    std::mem::swap(obj, &mut placeholder);
+
+                    self.free_slots.push(Reverse(index));
+                    self.allocations -= 1;
                 } else {
+                    // Reset the is_marked flag for the next gc
                     obj.is_marked = false;
                 }
             }
-        }
-
-        // Free the unmarked instances
-        for index in to_free.iter() {
-            self.free(*index);
         }
 
         shrinkable_to

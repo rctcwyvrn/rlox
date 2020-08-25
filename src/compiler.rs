@@ -343,10 +343,12 @@ impl Compiler<'_> {
             match superclass_index {
                 Some(i) => {
                     let superclass = &self.classes[i];
-                    for (name, fn_index) in superclass.methods.clone().iter() {
-                        self.current_class().methods.insert(name.clone(), *fn_index);
+                    for (name_index, fn_index) in superclass.methods.clone().iter() {
+                        self.current_class()
+                            .methods
+                            .insert(name_index.clone(), *fn_index);
                         // Inherit all the methods by just copying in all the fn_indices, nicely handles multiple levels of inheritence
-
+                        let name = self.identifier_constants[*name_index].clone();
                         if name.as_str().eq("init") {
                             self.current_class().has_init = true;
                         }
@@ -611,6 +613,7 @@ impl Compiler<'_> {
     fn method(&mut self) {
         self.consume(TokenType::TokenIdentifier, "Expected method name");
         let name = self.previous().lexemme.clone();
+        let name_index = self.identifier_constant(&name);
 
         let index = if name.eq("init") {
             self.current_class().has_init = true;
@@ -618,7 +621,7 @@ impl Compiler<'_> {
         } else {
             self.function(FunctionType::Method)
         };
-        self.current_class().methods.insert(name, index); // Note: This provides method overriding since we do not check if the name already existed in the map
+        self.current_class().methods.insert(name_index, index); // Note: This provides method overriding since we do not check if the name already existed in the map
 
         // NOTE!! this way of doing methods does NOT bind closures... So there is a very very stupid way this could go wrong
         // Something like fun thing() { class Inner { method() { // use a local variable from thing in here }}}

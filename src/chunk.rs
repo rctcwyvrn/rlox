@@ -110,7 +110,7 @@ impl FunctionChunk {
 #[derive(Debug)]
 pub struct ClassChunk {
     pub name: String,
-    pub methods: HashMap<String, usize>,
+    pub methods: HashMap<usize, usize>,
     pub superclass: Option<usize>,
     pub has_init: bool,
 }

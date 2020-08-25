@@ -197,6 +197,7 @@ impl VMState {
         arg_count: usize,
         function_defs: &Vec<FunctionChunk>,
         class_defs: &Vec<ClassChunk>,
+        init_slot: &Option<usize>,
     ) -> Option<String> {
         let callee = self.peek_at(arg_count);
         if let Value::LoxPointer(_) = callee {
@@ -228,8 +229,11 @@ impl VMState {
             // So we want to call with the stack as: LoxPointer => LoxInstance | arg1 | arg2
             // And we need the init() fn to return the LoxInstance
             if class_def.has_init {
+                if init_slot == &None {
+                    panic!("VM panic! Attempted to call a custom initializer without it existing as a method identifier?");
+                }
                 self.call(
-                    *class_def.methods.get("init").unwrap(),
+                    *class_def.methods.get(&init_slot.unwrap()).unwrap(),
                     arg_count,
                     function_defs,
                 )
@@ -341,12 +345,13 @@ pub struct VM {
     pub classes: Vec<ClassChunk>,
     pub constants: Vec<Value>,
     pub identifiers: Vec<String>,
+    init_slot: Option<usize>,
 }
 
 impl VM {
     pub fn new(mode: ExecutionMode, result: CompilationResult, quiet: bool) -> VM {
         let functions = result.functions;
-
+        let init_slot = result.identifier_constants.iter().position(|x| x == "init");
         VM {
             quiet_mode: quiet,
             mode,
@@ -354,6 +359,7 @@ impl VM {
             classes: result.classes,
             constants: result.constants,
             identifiers: result.identifier_constants,
+            init_slot,
         }
     }
 
@@ -379,10 +385,11 @@ impl VM {
         }
     }
 
-    /// Should only be used for getting instance properties (methods or fields) and error reporting
-    /// For the global instructions, just the index should suffice
-    ///
-    /// Local variable names are erased completely by the resolver at compile time
+    /// Should only be used for getting debugging and error reporting
+    /// 
+    /// * For the global instructions, just the index should suffice
+    /// * For instance properties and fields, the hashmaps are keyed on the usize corresponding to the identifier string
+    /// * Local variable names are erased completely by the resolver at compile time
     fn get_variable_name(&self, index: usize) -> &String {
         let name_val = self.identifiers.get(index);
         if let Some(var_name) = name_val {
@@ -466,7 +473,12 @@ impl VM {
                             let new = x.clone();
                             let index = state.stack.len() - arity;
                             state.stack.insert(index, new);
-                            let result = state.call_value(arity, &self.functions, &self.classes);
+                            let result = state.call_value(
+                                arity,
+                                &self.functions,
+                                &self.classes,
+                                &self.init_slot,
+                            );
                             current_code = &self.get_current_code(&state)[..]; // Update the current code
                             if let Some(msg) = result {
                                 self.runtime_error(&msg[..], &state);
@@ -524,28 +536,36 @@ impl VM {
                     state.stack[dest] = state.peek().clone(); // Same idea as OpSetGlobal, don't pop value since it's an expression
                 }
 
-                OpCode::OpInvoke(index, arg_count) => {
-                    let name = self.get_variable_name(index);
+                OpCode::OpInvoke(name_index, arg_count) => {
                     let pointer_val = state.peek_at(arg_count);
 
                     let result = match state.deref_into(pointer_val, HeapObjType::LoxInstance) {
                         Ok(instance) => {
                             let instance = instance.as_instance();
                             let class_def = &self.classes[instance.class];
-                            if instance.fields.contains_key(name) {
+                            if instance.fields.contains_key(&name_index) {
                                 // Guard against the weird edge case where instance.thing() is actually calling a closure instance.thing, not a method invocation
-                                let value = instance.fields.get(name).unwrap().clone();
+                                let value = instance.fields.get(&name_index).unwrap().clone();
                                 let index = state.stack.len() - 1 - arg_count;
                                 state.stack[index] = value; // Remove the instance and replace with the value
-                                state.call_value(arg_count, &self.functions, &self.classes)
+                                state.call_value(
+                                    arg_count,
+                                    &self.functions,
+                                    &self.classes,
+                                    &self.init_slot,
+                                )
                             // Perform the call
-                            } else if class_def.methods.contains_key(name) {
+                            } else if class_def.methods.contains_key(&name_index) {
                                 // We know that the top of the stack is LoxPointer | arg1 | arg2
                                 // So we can go ahead and call
-                                let fn_index = class_def.methods.get(name).unwrap();
+                                let fn_index = class_def.methods.get(&name_index).unwrap();
                                 state.call(*fn_index, arg_count, &self.functions)
                             } else {
-                                Some(format!("Undefined property '{}' in {:?}", name, instance))
+                                Some(format!(
+                                    "Undefined property '{}' in {:?}",
+                                    self.get_variable_name(name_index),
+                                    instance
+                                ))
                             }
                         }
                         Err(_) => Some(String::from("Can only invoke methods on class instances")),
@@ -557,24 +577,23 @@ impl VM {
                     }
                     current_code = &self.get_current_code(&state)[..]; // Update the current code
                 }
-                OpCode::OpGetProperty(index) => {
-                    let name = self.get_variable_name(index);
+                OpCode::OpGetProperty(name_index) => {
                     let pointer_val = state.peek();
 
                     // Todo: Combine this and SetProperty into a macro so it doesn't hurt me everytime i have to read this
                     match state.deref_into(pointer_val, HeapObjType::LoxInstance) {
                         Ok(instance) => {
                             let instance = instance.as_instance();
-                            if instance.fields.contains_key(name) {
+                            if instance.fields.contains_key(&name_index) {
                                 // See if we tried to get a field
-                                let value = instance.fields.get(name).unwrap().clone();
+                                let value = instance.fields.get(&name_index).unwrap().clone();
                                 state.pop(); // Remove the instance
                                 state.stack.push(value); // Replace with the value
                             } else {
                                 let class_chunk = &self.classes[instance.class]; // if not a field, then we must be getting a function. Create a LoxBoundMethod for it
-                                if class_chunk.methods.contains_key(name) {
+                                if class_chunk.methods.contains_key(&name_index) {
                                     let bound_value = ObjBoundMethod {
-                                        method: *class_chunk.methods.get(name).unwrap(),
+                                        method: *class_chunk.methods.get(&name_index).unwrap(),
                                         pointer: pointer_val.as_pointer(),
                                     };
                                     state.pop(); // Remove the instance
@@ -582,8 +601,12 @@ impl VM {
                                 // Replace with bound method
                                 } else {
                                     self.runtime_error(
-                                        format!("Undefined property '{}' in {:?}", name, instance)
-                                            .as_str(),
+                                        format!(
+                                            "Undefined property '{}' in {:?}",
+                                            self.get_variable_name(name_index),
+                                            instance
+                                        )
+                                        .as_str(),
                                         &state,
                                     );
                                     return InterpretResult::InterpretRuntimeError;
@@ -597,16 +620,15 @@ impl VM {
                         }
                     }
                 }
-                OpCode::OpSetProperty(index) => {
+                OpCode::OpSetProperty(name_index) => {
                     // Fixme: this is nearly identical to OpGetProperty, is there any way to combine them nicely?
-                    let name = self.get_variable_name(index);
                     let val = state.pop();
                     let pointer_val = state.peek().clone();
 
                     match state.deref_into_mut(&pointer_val, HeapObjType::LoxInstance) {
                         Ok(instance) => {
                             let instance = instance.as_instance_mut();
-                            instance.fields.insert(name.clone(), val.clone());
+                            instance.fields.insert(name_index, val.clone());
                         }
                         Err(_) => {
                             let msg = format!("Only class instances can access properties with '.' Found {} instead", pointer_val.to_string(&self, &state));
@@ -620,8 +642,7 @@ impl VM {
                     state.stack.push(val); // Return the value to the stack
                 }
                 // This is almost identical to OpGetProperty, but it goes one extra jump to get the method from the superclass, and binds it to itself
-                OpCode::OpGetSuper(index) => {
-                    let name = self.get_variable_name(index);
+                OpCode::OpGetSuper(name_index) => {
                     let pointer_val = state.peek();
 
                     // Todo: Combine this and SetProperty into a macro so it doesn't hurt me everytime i have to read this
@@ -634,9 +655,9 @@ impl VM {
                                 // Note: I think the compiiler can catch this
                             }
                             let superclass_chunk = &self.classes[class_chunk.superclass.unwrap()];
-                            if superclass_chunk.methods.contains_key(name) {
+                            if superclass_chunk.methods.contains_key(&name_index) {
                                 let bound_value = ObjBoundMethod {
-                                    method: *superclass_chunk.methods.get(name).unwrap(),
+                                    method: *superclass_chunk.methods.get(&name_index).unwrap(),
                                     pointer: pointer_val.as_pointer(),
                                 };
                                 state.pop(); // Remove the instance
@@ -646,7 +667,8 @@ impl VM {
                                 self.runtime_error(
                                     format!(
                                         "Undefined superclass method '{}' for {:?}",
-                                        name, instance
+                                        self.get_variable_name(name_index),
+                                        instance
                                     )
                                     .as_str(),
                                     &state,
@@ -692,7 +714,8 @@ impl VM {
                 OpCode::OpLoop(neg_offset) => state.jump_back(neg_offset),
 
                 OpCode::OpCall(arity) => {
-                    let result = state.call_value(arity, &self.functions, &self.classes);
+                    let result =
+                        state.call_value(arity, &self.functions, &self.classes, &self.init_slot);
                     current_code = &self.get_current_code(&state)[..]; // Update the current code
                     if let Some(msg) = result {
                         self.runtime_error(&msg[..], &state);

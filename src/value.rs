@@ -77,9 +77,13 @@ pub fn values_equal(t: (&Value, &Value)) -> bool {
     match t {
         (Value::Double(x), Value::Double(y)) => x == y,
         (Value::Bool(x), Value::Bool(y)) => x == y,
-        (Value::Nil, _) => true,
+        (Value::Nil, Value::Nil) => true,
         (Value::LoxString(x), Value::LoxString(y)) => x.eq(y),
         (Value::LoxPointer(x), Value::LoxPointer(y)) => x == y,
+        (Value::LoxClass(x), Value::LoxClass(y)) => x == y,
+        (Value::LoxFunction(x), Value::LoxFunction(y)) => x == y,
+        (Value::NativeFunction(x), Value::NativeFunction(y)) => x == y,
+        (Value::LoxBoundMethod(x), Value::LoxBoundMethod(y)) => x == y,
         _ => false,
     }
 }

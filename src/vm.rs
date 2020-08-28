@@ -660,15 +660,18 @@ impl VM {
                                     method: *superclass_chunk.methods.get(&name_index).unwrap(),
                                     pointer: pointer_val.as_pointer(),
                                 };
+                                println!("Superclass get method found method {:?} ", bound_value);
+                                println!("Superclass methods {:?}", superclass_chunk.methods);
+                                println!("Superclass for {:?} is {:?}", instance, class_chunk.superclass);
                                 state.pop(); // Remove the instance
                                 state.stack.push(Value::LoxBoundMethod(bound_value));
                             // Replace with bound method
                             } else {
                                 self.runtime_error(
                                     format!(
-                                        "Undefined superclass method '{}' for {:?}",
+                                        "Undefined superclass method '{}' for {}",
                                         self.get_variable_name(name_index),
-                                        instance
+                                        self.classes.get(instance.class).unwrap().name,
                                     )
                                     .as_str(),
                                     &state,

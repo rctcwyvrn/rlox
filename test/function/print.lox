@@ -1,4 +1,3 @@
 fun foo() {}
-print foo; // expect: <pointer 0> to <fn foo | ObjClosure { function: 1, values: [] }>
-// Todo: maybe change these prints to be something less disgusting?
-print clock; // expect: <native fn>
+print foo; // expect: <fn foo>
+print clock; // expect: <native_fn>

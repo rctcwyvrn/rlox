@@ -16,18 +16,19 @@ pub fn disassemble_class_chunk(
         None => eprintln!("== <class {}> ===============", &class_chunk.name),
     }
     for (name, fn_index) in class_chunk.methods.iter() {
-        eprintln!("== <method {}> ============", name);
+        eprintln!("== <method {} | #{}> ============", identifiers.get(*name).unwrap(), fn_index);
         disassemble_chunk(&function_defs[*fn_index].chunk, constants, identifiers);
     }
 }
 
 pub fn disassemble_fn_chunk(
+    index: usize,
     fn_chunk: &FunctionChunk,
     constants: &Vec<Value>,
     identifiers: &Vec<String>,
 ) {
     match &fn_chunk.name {
-        Some(name) => eprintln!("== <fn {}> ==============", name),
+        Some(name) => eprintln!("== <fn {} | #{}> ==============", name, index),
         None => eprintln!("== <script> =============="),
     }
     disassemble_chunk(&fn_chunk.chunk, constants, identifiers);
@@ -64,6 +65,7 @@ pub fn disassemble_instruction(
             constants.get(index).unwrap()
         ),
         OpCode::OpDefineGlobal(index)
+        | OpCode::OpGetSuper(index)
         | OpCode::OpSetGlobal(index)
         | OpCode::OpGetGlobal(index)
         | OpCode::OpCallGlobal(index, _)

@@ -55,7 +55,6 @@ impl Compiler<'_> {
             self.error(self.current().lexemme.clone().as_str());
             self.advance();
         }
-        //println!("depth = {} | prev {:?} | cur {:?}", self.current_function, self.previous(), self.current());
     }
 
     fn previous(&self) -> &Token {
@@ -212,7 +211,13 @@ impl Compiler<'_> {
 
     /// loop_start: Index of the instruction to jump back to
     fn emit_loop(&mut self, loop_start: usize) {
-        let loop_op = OpCode::OpLoop(self.current_chunk().code.len() - loop_start);
+        let offset = self.current_chunk().code.len() - loop_start;
+        let loop_op = OpCode::OpLoop(offset);
+
+        if offset > (u16::MAX as usize) {
+            self.error("Loop body too large");
+        }
+
         self.emit_instr(loop_op);
     }
 
@@ -645,14 +650,15 @@ impl Compiler<'_> {
         );
         if !self.check(TokenType::TokenRightParen) {
             loop {
+                let param_constant = self.parse_variable("Expected parameter name");
+                self.define_variable(param_constant);
+
                 let cur_function = self.current_fn();
                 cur_function.arity += 1;
                 if cur_function.arity > 255 {
                     self.error("Cannot have more than 255 parameters");
                 }
 
-                let param_constant = self.parse_variable("Expected parameter name");
-                self.define_variable(param_constant);
                 if !self.match_cur(TokenType::TokenComma) {
                     break;
                 }
@@ -929,12 +935,13 @@ impl Compiler<'_> {
         let mut scanner = Scanner::new(code);
 
         let mut tokens = Vec::new();
-        tokens.push(scanner.scan_token()); // Load up the first token
+        let first_token = scanner.scan_token();
+        tokens.push(first_token.clone()); // Load up the first token
 
         let mut functions = Vec::new();
         functions.push(FunctionChunk::new(None, 0, FunctionType::Script)); // Start the compilation with a top level function
 
-        Compiler {
+        let mut compiler = Compiler {
             scanner,
             tokens,
             constants: Vec::new(),
@@ -949,7 +956,15 @@ impl Compiler<'_> {
             had_error: false,
             panic_mode: false,
             quiet_mode: quiet,
+        };
+
+        // Hack to account for the case where the first token is a TokenError
+        if let TokenType::TokenError = first_token.token_type {
+            compiler.advance();
+            compiler.error(first_token.lexemme.as_str());
         }
+
+        compiler
     }
 
     // Note: is this an expensive move (moving self into this function) ? Is it less expensive to just move/copy the FunctionChunks afterwards?
@@ -960,11 +975,11 @@ impl Compiler<'_> {
         self.end_compilation();
 
         if debug {
-            for fn_chunk in self.functions.iter() {
+            for (index, fn_chunk) in self.functions.iter().enumerate() {
                 if fn_chunk.fn_type != FunctionType::Method
                     && fn_chunk.fn_type != FunctionType::Initializer
                 {
-                    disassemble_fn_chunk(&fn_chunk, &self.constants, &self.identifier_constants);
+                    disassemble_fn_chunk(index, &fn_chunk, &self.constants, &self.identifier_constants);
                 }
             }
 

@@ -619,12 +619,11 @@ impl Compiler<'_> {
         // At the time of OpGetSuper we want to know 2 things
         // 1. The superclass we're going to be looking for values in
         // 2. A pointer to the instance we want to bind the method to
-        
+
         let superclass_val = Value::LoxClass(superclass_index);
         self.emit_constant(superclass_val);
         self.named_variable(&String::from("this"), false); // Slightly better?
         self.emit_instr(OpCode::OpGetSuper(name_index));
-
     }
 
     fn method(&mut self) {

@@ -255,8 +255,7 @@ impl Compiler<'_> {
         }
 
         // Show compilation error for a TokenEqual found in an infix position
-        // Note: I think this just does not work at all, maybe we need to match against previous?
-        if can_assign && self.match_cur(TokenType::TokenEqual) {
+        if can_assign && self.previous().token_type == TokenType::TokenEqual {
             self.error("Invalid assignment target");
         }
     }

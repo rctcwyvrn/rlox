@@ -777,9 +777,11 @@ impl VM {
 fn debug_state_trace(state: &VMState, vm: &VM) {
     eprintln!("> Frame: {:?}", state.current_frame);
     eprintln!("> Stack: ");
+    eprint!(">>");
     for value in state.stack.iter() {
-        eprintln!(">> [ {:?} ]", value);
+        eprint!(" [ {:?} ] ", value);
     }
+    eprintln!("");
     eprintln!("> Globals: ");
     for (index, val) in state.globals.iter().enumerate() {
         if let Global::Init(global) = val {

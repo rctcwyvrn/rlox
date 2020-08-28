@@ -1,6 +1,6 @@
 class A {
   say() {
-    print "A";
+    print "A" + this.val;
   }
 }
 
@@ -20,16 +20,6 @@ class C < B {
   }
 }
 
-C().test(); // expect: A
-
-// This is going to be a doozy to fix
-
-// Because C inherits B's methods at compile time by copy, when we call C().test()
-// We have a pointer to a C instance sitting at slot 0 while in test()
-// So if we call a super method while in B::test(), we do this:
-// 1. Get the instance pointer (which is still a ptr to C btw)
-// 2. Get the class_chunk it refers to (C's class chunk)
-// 3. Get it's superclass (B's class chunk)
-// 4. Look for the method and bind it => Finds B::say() and binds it, which is why this test fails
-
-// God dammit
+var c = C();
+c.val = "meow";
+c.test(); // expect: Ameow

@@ -157,7 +157,7 @@ impl Scanner<'_> {
         }
 
         if self.is_at_end() {
-            return self.error_token(String::from("Missing delimiter for string"));
+            return self.error_token(String::from("Unterminated string"));
         }
 
         self.advance(); // Step over the closing quote

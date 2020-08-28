@@ -4,5 +4,7 @@ class B < A {
   method() {
     // [line 6] Error at ';': Expected '.' after 'super'
     super;
-  }
+  } // [line 11] Error at end of file: Expected '}' after block
+  // Extra error that shows up due to slight differences in error handling and syncing 
+  // I have no idea why clox doesnt have this error
 }

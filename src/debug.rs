@@ -16,7 +16,11 @@ pub fn disassemble_class_chunk(
         None => eprintln!("== <class {}> ===============", &class_chunk.name),
     }
     for (name, fn_index) in class_chunk.methods.iter() {
-        eprintln!("== <method {} | #{}> ============", identifiers.get(*name).unwrap(), fn_index);
+        eprintln!(
+            "== <method {} | #{}> ============",
+            identifiers.get(*name).unwrap(),
+            fn_index
+        );
         disassemble_chunk(&function_defs[*fn_index].chunk, constants, identifiers);
     }
 }

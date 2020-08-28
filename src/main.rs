@@ -4,6 +4,7 @@ use std::env;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
+use std::process::exit;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -11,7 +12,7 @@ fn main() {
     if args.len() >= 2 {
         let debug = (args.len() == 3) && args[2].eq("--debug");
         let result = run_file(args.get(1).unwrap(), debug);
-        std::process::exit(match result {
+        exit(match result {
             InterpretResult::InterpretOK => 0,
             InterpretResult::InterpretCompileError => 65,
             InterpretResult::InterpretRuntimeError => 70,
@@ -27,12 +28,18 @@ fn run_file(filename: &String, debug: bool) -> InterpretResult {
 
     let mut file = match File::open(&path) {
         Ok(file) => file,
-        Err(why) => panic!("Failed to open {}: {}", path_display, why),
+        Err(why) => {
+            eprintln!("Failed to open {}: {}", path_display, why);
+            exit(1);
+        }
     };
 
     let mut s = String::new();
     match file.read_to_string(&mut s) {
         Ok(_) => return rlox::interpret(&s, debug, false),
-        Err(why) => panic!("Failed to read {}: {}", path_display, why),
+        Err(why) => {
+            eprintln!("Failed to read {}: {}", path_display, why);
+            exit(1);
+        }
     };
 }

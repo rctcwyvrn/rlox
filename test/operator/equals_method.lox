@@ -9,5 +9,10 @@ var fooMethod = foo.method;
 // Same bound method
 print fooMethod == fooMethod; // expect: true
 
-// Different closurizations
-print foo.method == foo.method; // expect: false
+// Identical bound values because it's the same instance + method
+print foo.method == foo.method; // expect: true
+
+var foo_2 = Foo();
+
+// Same method, different instances
+print foo.method == foo_2.method; // expect: false

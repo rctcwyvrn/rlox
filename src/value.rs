@@ -164,7 +164,7 @@ impl HeapObjVal {
                     .unwrap(),
                 closure
             ),
-            HeapObjVal::LoxInstance(instance) => format!("<instance {}>", instance.class),
+            HeapObjVal::LoxInstance(instance) => format!("<instance {}>", vm.classes.get(instance.class).unwrap().name),
             HeapObjVal::HeapPlaceholder => {
                 panic!("VM panic! How did a placeholder value get here?")
             }

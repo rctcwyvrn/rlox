@@ -1,4 +1,4 @@
-// [line 3] Error at '{': Expected expression
+// [line 7] Error at '{': Expected expression
 
 // // I don't believe that this test is correct
 // Original: [line 3] Error at ')': Expected ';' after expression

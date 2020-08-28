@@ -1,21 +1,9 @@
 === all ===
 
-FAIL test/assignment/infix_operator.lox
+FAIL test/assignment/grouping.lox
      Unexpected error:
-     [3] Error at '"value"': Expected ';' after value
-     Missing expected error: [3] Error at '=': Invalid assignment target
-
-
-FAIL test/assignment/prefix_operator.lox
-     Unexpected error:
-     [2] Error at '"value"': Expected ';' after value
+     [2] Error at '=': Expected ';' after value
      Missing expected error: [2] Error at '=': Invalid assignment target
-
-
-FAIL test/assignment/to_this.lox
-     Unexpected error:
-     [3] Error at '"value"': Expected ';' after value
-     Missing expected error: [3] Error at '=': Invalid assignment target
 
 
 FAIL test/class/local_reference_self.lox
@@ -140,26 +128,6 @@ FAIL test/closure/unused_later_closure.lox
      Missing expected output 'a' on line 27.
 
 
-FAIL test/constructor/missing_arguments.lox
-     Expected runtime error 'Expected 2 arguments but got 1' and got:
-     Expected 2 arguments but got 1 instead
-
-
-FAIL test/field/get_on_function.lox
-     Expected runtime error 'Only class instances can access properties with '.' Found <fn> instead' and got:
-     Only class instances can access properties with '.' Found <pointer 0> to <fn foo | ObjClosure { function: 1, values: [] }> instead
-
-
-FAIL test/field/set_on_function.lox
-     Expected runtime error 'Only class instances can access properties with '.' Found <fn> instead' and got:
-     Only class instances can access properties with '.' Found <pointer 0> to <fn foo | ObjClosure { function: 1, values: [] }> instead
-
-
-FAIL test/field/undefined.lox
-     Expected runtime error 'Undefined property 'bar'' and got:
-     Undefined property 'bar' in ObjInstance { class: 0, fields: {} }
-
-
 FAIL test/for/closure_in_body.lox
      Unexpected output on stderr:
      Undefined variable 'i'
@@ -193,14 +161,6 @@ FAIL test/for/scope.lox
      Missing expected output '0' on line 24.
 
 
-FAIL test/for/statement_condition.lox
-     Missing expected error: [3] Error at ')': Expected ';' after expression
-
-
-FAIL test/for/statement_initializer.lox
-     Missing expected error: [3] Error at ')': Expected ';' after expression
-
-
 FAIL test/function/local_recursion.lox
      Unexpected output on stderr:
      Undefined variable 'fib'
@@ -215,122 +175,10 @@ FAIL test/function/local_recursion.lox
      Missing expected output '21' on line 7.
 
 
-FAIL test/function/print.lox
-     Expected output '<native fn>' on line 4 and got '<native_fn>'.
-
-
-FAIL test/function/too_many_parameters.lox
-     Unexpected error:
-     [257] Error at ',': Cannot have more than 255 parameters
-     Missing expected error: [257] Error at 'a': Cannot have more than 255 parameters
-
-
-FAIL test/limit/loop_too_large.lox
-     Missing expected error: [2351] Error at '}': Loop body too large
-     Expected return code 65 and got 0. Stderr:
-
-
-FAIL test/limit/no_reuse_constants.lox
-     Missing expected error: [35] Error at '1': Too many constants in one chunk
-     Expected return code 65 and got 0. Stderr:
-
-
-FAIL test/limit/too_many_constants.lox
-     Missing expected error: [35] Error at '"oops"': Too many constants in one chunk
-     Expected return code 65 and got 0. Stderr:
-
-
-FAIL test/limit/too_many_locals.lox
-     Missing expected error: [52] Error at 'oops': Too many local variables in function
-     Expected return code 65 and got 0. Stderr:
-
-
-FAIL test/limit/too_many_upvalues.lox
-     Missing expected error: [102] Error at 'oops': Too many closure variables in function
-     Expected return code 65 and got 0. Stderr:
-
-
-FAIL test/method/too_many_parameters.lox
-     Unexpected error:
-     [258] Error at ',': Cannot have more than 255 parameters
-     Missing expected error: [258] Error at 'a': Cannot have more than 255 parameters
-
-
-FAIL test/number/decimal_point_at_eof.lox
-     Unexpected error:
-     [2] Error at end of file: Expected property name after '.'
-     Missing expected error: [2] Error at end: Expected property name after '.'
-
-
-FAIL test/operator/equals_class.lox
-     Expected output 'true' on line 5 and got 'false'.
-     Expected output 'true' on line 8 and got 'false'.
-     Expected output 'false' on line 11 and got 'true'.
-
-
-FAIL test/operator/equals_method.lox
-     Expected output 'true' on line 10 and got 'false'.
-
-
-FAIL test/regression/40.lox
-     Expected output 'false' on line 4 and got 'true'.
-
-
 FAIL test/string/unterminated.lox
      Unexpected output on stderr:
-     [Line 2] Error: Expected expression
+     [Line 2] Error: Unterminated string
      Missing expected error: [2] Error: Unterminated string
-
-
-FAIL test/super/extra_arguments.lox
-     Expected runtime error 'Expected 2 arguments but got 4' and got:
-     Expected 2 arguments but got 4 instead
-
-
-FAIL test/super/missing_arguments.lox
-     Expected runtime error 'Expected 2 arguments but got 1' and got:
-     Expected 2 arguments but got 1 instead
-
-
-FAIL test/super/no_superclass_method.lox
-     Expected runtime error 'Undefined property 'doesNotExist'' and got:
-     Undefined superclass method 'doesNotExist' for ObjInstance { class: 1, fields: {} }
-
-
-FAIL test/super/super_in_closure_in_inherited_method.lox
-     Expected output 'A' on line 26 and got 'B'.
-
-
-FAIL test/super/super_in_inherited_method.lox
-     Expected output 'A' on line 23 and got 'B'.
-
-
-FAIL test/super/super_without_dot.lox
-     Unexpected error:
-     [9] Error at end of file: Expected '}' after block
-
-
-FAIL test/super/super_without_name.lox
-     Unexpected error:
-     [8] Error at end of file: Expected '}' after block
-
-
-FAIL test/this/nested_class.lox
-     Expected output 'Outer instance' on line 3 and got '<pointer 0> to <instance 0>'.
-     Expected output 'Outer instance' on line 6 and got '<pointer 0> to <instance 0>'.
-     Expected output 'Inner instance' on line 10 and got '<pointer 2> to <instance 1>'.
-
-
-FAIL test/this/this_at_top_level.lox
-     Unexpected error:
-     [1] Error at 'this': Cannot use keyword 'this' outside of a class
-     Missing expected error: [1] Error at 'this': Cannot use 'this' outside of a class
-
-
-FAIL test/this/this_in_top_level_function.lox
-     Unexpected error:
-     [2] Error at 'this': Cannot use keyword 'this' outside of a class
-     Missing expected error: [2] Error at 'this': Cannot use 'this' outside of a class
 
 
 FAIL test/variable/shadow_and_local.lox
@@ -357,4 +205,4 @@ FAIL test/while/closure_in_body.lox
      Missing expected output '3' on line 19.
 
 
-198 tests passed. 47 tests failed.
+224 tests passed. 17 tests failed.

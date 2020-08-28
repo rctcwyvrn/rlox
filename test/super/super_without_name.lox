@@ -4,4 +4,5 @@ class B < A {
   method() {
     super.; // Error at ';': Expected superclass method name
   }
-}
+} // [line 9] Error at end of file: Expected '}' after block
+// See reasoning on super_without_dot.lox

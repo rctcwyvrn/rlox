@@ -7,4 +7,4 @@ class Foo {
   }
 }
 
-print Foo(); // expect: <pointer 0> to <instance 0>
+print Foo(); // expect: <pointer 0> to <instance Foo>

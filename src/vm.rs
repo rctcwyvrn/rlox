@@ -644,44 +644,43 @@ impl VM {
                 // This is almost identical to OpGetProperty, but it goes one extra jump to get the method from the superclass, and binds it to itself
                 OpCode::OpGetSuper(name_index) => {
                     let pointer_val = state.peek();
-
-                    // Todo: Combine this and SetProperty into a macro so it doesn't hurt me everytime i have to read this
-                    match state.deref_into(pointer_val, HeapObjType::LoxInstance) {
-                        Ok(instance) => {
-                            let instance = instance.as_instance();
-                            let class_chunk = &self.classes[instance.class];
-                            if class_chunk.superclass == None {
-                                self.runtime_error("Cannot use keyword 'super' in a class that does not have a superclass", &state);
-                                // Note: I think the compiiler can catch this
+                    let superclass_val = state.peek_at(1);
+                    if let Value::LoxClass(superclass) = superclass_val {
+                        // Todo: Combine this and SetProperty into a macro so it doesn't hurt me everytime i have to read this
+                        match state.deref_into(pointer_val, HeapObjType::LoxInstance) {
+                            Ok(instance) => {
+                                let instance = instance.as_instance();
+                                let superclass_chunk = &self.classes[*superclass];
+                                if superclass_chunk.methods.contains_key(&name_index) {
+                                    let bound_value = ObjBoundMethod {
+                                        method: *superclass_chunk.methods.get(&name_index).unwrap(),
+                                        pointer: pointer_val.as_pointer(),
+                                    };
+                                    // println!("Superclass get method found method {:?} ", bound_value);
+                                    // println!("Superclass methods {:?}", superclass_chunk.methods);
+                                    // println!("Superclass for {:?} is {:?}", instance, class_chunk.superclass);
+                                    state.pop(); // Remove the instance
+                                    state.stack.push(Value::LoxBoundMethod(bound_value));
+                                // Replace with bound method
+                                } else {
+                                    self.runtime_error(
+                                        format!(
+                                            "Undefined superclass method '{}' for {}",
+                                            self.get_variable_name(name_index),
+                                            self.classes.get(instance.class).unwrap().name,
+                                        )
+                                        .as_str(),
+                                        &state,
+                                    );
+                                    return InterpretResult::InterpretRuntimeError;
+                                }
                             }
-                            let superclass_chunk = &self.classes[class_chunk.superclass.unwrap()];
-                            if superclass_chunk.methods.contains_key(&name_index) {
-                                let bound_value = ObjBoundMethod {
-                                    method: *superclass_chunk.methods.get(&name_index).unwrap(),
-                                    pointer: pointer_val.as_pointer(),
-                                };
-                                println!("Superclass get method found method {:?} ", bound_value);
-                                println!("Superclass methods {:?}", superclass_chunk.methods);
-                                println!("Superclass for {:?} is {:?}", instance, class_chunk.superclass);
-                                state.pop(); // Remove the instance
-                                state.stack.push(Value::LoxBoundMethod(bound_value));
-                            // Replace with bound method
-                            } else {
-                                self.runtime_error(
-                                    format!(
-                                        "Undefined superclass method '{}' for {}",
-                                        self.get_variable_name(name_index),
-                                        self.classes.get(instance.class).unwrap().name,
-                                    )
-                                    .as_str(),
-                                    &state,
-                                );
-                                return InterpretResult::InterpretRuntimeError;
+                            Err(_) => {
+                                panic!("VM panic! Failed to obtain instance LoxPointer for super");
                             }
                         }
-                        Err(_) => {
-                            panic!("VM panic! Failed to obtain instance LoxPointer for super");
-                        }
+                    } else {
+                        panic!("VM panic! Failed to obtain superclass index for super, got {:?} instead", superclass_val);
                     }
                 }
 

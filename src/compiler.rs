@@ -598,9 +598,15 @@ impl Compiler<'_> {
     fn super_(&mut self) {
         if self.current_class == None {
             self.error("Cannot use keyword 'super' outside of a class");
-        } else if self.current_class().superclass == None {
-            self.error("Cannot use keyword 'super' in a class which does not inherit a class");
+            return; // Ideally we would attempt to compile the rest of the expression, but trying to continue will cause a panic
         }
+
+        let superclass_index = if self.current_class().superclass == None {
+            self.error("Cannot use keyword 'super' in a class which does not inherit a class");
+            0 // Random value, we don't care that this value is wrong because we're going to exit because of the error anyway
+        } else {
+            self.current_class().superclass.unwrap()
+        };
 
         self.consume(TokenType::TokenDot, "Expected '.' after 'super'");
         self.consume(
@@ -609,9 +615,16 @@ impl Compiler<'_> {
         );
         let name = self.previous().lexemme.clone();
         let name_index = self.identifier_constant(&name);
-        //self.emit_instr(OpCode::OpGetLocal(0)); // Fixme: Slightly sketchy hack to throw the LoxPointer into the right spot.
+
+        // At the time of OpGetSuper we want to know 2 things
+        // 1. The superclass we're going to be looking for values in
+        // 2. A pointer to the instance we want to bind the method to
+        
+        let superclass_val = Value::LoxClass(superclass_index);
+        self.emit_constant(superclass_val);
         self.named_variable(&String::from("this"), false); // Slightly better?
         self.emit_instr(OpCode::OpGetSuper(name_index));
+
     }
 
     fn method(&mut self) {
@@ -979,7 +992,12 @@ impl Compiler<'_> {
                 if fn_chunk.fn_type != FunctionType::Method
                     && fn_chunk.fn_type != FunctionType::Initializer
                 {
-                    disassemble_fn_chunk(index, &fn_chunk, &self.constants, &self.identifier_constants);
+                    disassemble_fn_chunk(
+                        index,
+                        &fn_chunk,
+                        &self.constants,
+                        &self.identifier_constants,
+                    );
                 }
             }
 
